@@ -13,11 +13,12 @@ it works on macOS.
 ## About this fork
 
 This is a fork of [`wfpaisa/tablet`](https://github.com/wfpaisa/tablet).
-The upstream ships pre-built binaries only for `x86_64`. This fork extends
-the release model to `aarch64` (cross-compiled in CI) and rewrites the
-installer to derive every path from the XDG/freedesktop spec instead of
-hardcoding `~/.local` and `~/.config`. Build-from-source remains available
-via `scripts/package.sh` for developers and tinkerers.
+Upstream builds from source only; this fork is the one shipping pre-built
+binaries for `x86_64` and `aarch64` (cross-compiled in CI) through GitHub
+releases. It also rewrites the installer to derive every path from the
+XDG/freedesktop spec instead of hardcoding `~/.local` and `~/.config`.
+Build-from-source remains available via `scripts/package.sh` for developers
+and tinkerers.
 
 ## Features
 
