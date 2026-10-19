@@ -10,37 +10,14 @@ it works on macOS.
 
 ![Pen settings](docs/screenshots/pen.png)
 
-## Install
+## About this fork
 
-You need GNOME on Wayland (version 48 or later) and an x86_64 PC. Keep the
-pen **away from the tablet** while installing, then open a terminal and paste:
-
-```sh
-curl -fsSL https://github.com/wfpaisa/tablet/releases/latest/download/tablet-center-x86_64-linux.tar.gz | tar xz && ./tablet-center/install.sh
-```
-
-The installer may ask for your password once, to install WebKitGTK if it
-is missing and to give your user access to the tablet. When it finishes,
-**log out and back in**, then open **Tablet Center** from the app grid.
-If the tablet does nothing after that, restart the computer.
-
-Prefer to download by hand? Get `tablet-center-x86_64-linux.tar.gz` from the
-[latest release](https://github.com/wfpaisa/tablet/releases/latest), extract it, and run `./install.sh`
-inside the `tablet-center` folder.
-
-**Uninstall:** run `./tablet-center/uninstall.sh` (add `--purge` to delete
-your settings too).
-
-## Screenshots
-
-| | |
-|---|---|
-| ![ExpressKeys](docs/screenshots/expresskeys.png) | ![Express menu](docs/screenshots/express-menu.png) |
-| ExpressKeys | Express menu, one of the on-screen shortcuts |
-| ![Pan/Scroll](docs/screenshots/pan-scroll.png) | ![Mapping](docs/screenshots/mapping.png) |
-| Pan/Scroll, the macOS-style pen gesture | Mapping to all displays or one |
-| ![Glass interface](docs/screenshots/glass.png) | |
-| The alternative Glass interface | |
+This is a fork of [`wfpaisa/tablet`](https://github.com/wfpaisa/tablet).
+The upstream ships pre-built binaries only for `x86_64`. This fork extends
+the release model to `aarch64` (cross-compiled in CI) and rewrites the
+installer to derive every path from the XDG/freedesktop spec instead of
+hardcoding `~/.local` and `~/.config`. Build-from-source remains available
+via `scripts/package.sh` for developers and tinkerers.
 
 ## Features
 
@@ -82,17 +59,63 @@ your settings too).
 Tested with an Intuos S (CTL-4100). Other Wacom pens should work; the UI
 artwork currently covers the Intuos S only.
 
-## Details
+## Install
 
-The installer puts everything under your home folder: `tabletd` as a
-systemd user service that starts with your session, the Tablet Center app
-in the app grid, and its GNOME Shell extension. Only the system part needs
-your password: WebKitGTK 4.1 when it is missing, a udev rule for
-`/dev/uinput`, and membership in the `input` group. Check the service with
-`systemctl --user status tabletd`.
+You need GNOME on Wayland (version 48 or later) and an x86_64 or aarch64 PC.
+Keep the pen **away from the tablet** while installing, then open a terminal
+and paste:
 
-GNOME is required because the daemon reads the monitor layout from Mutter;
-other desktops are not supported (contributions welcome).
+```sh
+curl -fsSL https://github.com/mhasanmuammar/tablet/releases/latest/download/install.sh.tar.gz | tar xz && ./install/install.sh
+```
+
+The bootstrap downloads `install.sh` plus its packaging, detects your
+architecture (`uname -m`), fetches the matching pre-built binary archive
+(`tablet-center-x86_64-linux.tar.gz` or `tablet-center-aarch64-linux.tar.gz`)
+from this fork's release, and lays everything out under standard XDG
+directories — no host Rust toolchain needed.
+
+The installer may ask for your password once, to install WebKitGTK if it is
+missing and to give your user access to the tablet. When it finishes,
+**log out and back in**, then open **Tablet Center** from the app grid.
+If the tablet does nothing after that, restart the computer.
+
+### Download by hand
+
+Get the archive matching your arch from the
+[latest release](https://github.com/mhasanmuammar/tablet/releases/latest),
+extract it, and run `./install.sh` inside the extracted folder.
+
+### Uninstall
+
+```sh
+./install/uninstall.sh           # keeps your settings
+./install/uninstall.sh --purge   # deletes settings and backups too
+```
+
+## Build from source
+
+Build-from-source is for developers and tinkerers; normal users should use
+the pre-built install above.
+
+Install Rust (stable) and the
+[Tauri 2 Linux prerequisites](https://v2.tauri.app/start/prerequisites/#linux),
+then run `install.sh` from a checkout. It uses
+`dist/tablet-center-<arch>-linux.tar.gz` when present, otherwise downloads
+the matching pre-built archive from GitHub:
+
+```sh
+./install.sh
+```
+
+To build and package the release archive yourself:
+
+```sh
+scripts/package.sh              # x86_64 native build
+scripts/package.sh aarch64      # cross-compile for aarch64
+```
+
+The archive lands in `dist/tablet-center-<arch>-linux.tar.gz`.
 
 ### Container build
 
@@ -108,24 +131,68 @@ scripts/container.sh release    # build + package the release archive
 scripts/container.sh shell     # interactive shell in the image
 ```
 
-The release archive lands in `dist/tablet-center-<arch>-linux.tar.gz`, the
-same file `scripts/package.sh` produces. The image also ships a small runtime
-stage (`tablet-center:final`) with the binaries and their shared libraries
-under `/output/bin/`, plus the archive in `/output/`.
+The release archive lands in `dist/tablet-center-<arch>-linux.tar.gz`. The
+image also ships a small runtime stage (`tablet-center:final`) with the
+binaries and their shared libraries under `/output/bin/`, plus the archive in
+`/output/`.
 
-## From source
+## Guide
 
-Install Rust (stable) and the
-[Tauri 2 Linux prerequisites](https://v2.tauri.app/start/prerequisites/#linux),
-then run `./install.sh` from a checkout: it builds the binaries first.
-Use `./dev.sh` while developing, and `scripts/package.sh` to build the
-release archive (GitHub Actions does this for tags like `v0.1.0`).
+### Install from source
 
-Changes are applied immediately; there is no Save button.
+Install Rust (stable) and the Tauri 2 Linux prerequisites, then:
 
-On-screen shortcuts open as a transparent full-screen window on the monitor
-under the pen, because Wayland does not let an app place its own windows.
-Picking an entry closes it, and the action reaches the app you were using.
+```sh
+./install.sh
+```
+
+### Check status
+
+```sh
+systemctl --user status tabletd
+```
+
+### Develop
+
+```sh
+./dev.sh            # UI only; talks to the installed service
+./dev.sh --daemon   # also runs a local tabletd build if the service is stopped
+cargo test
+```
+
+The window loads `ui/` from a local server, so UI edits show up with
+Ctrl+R without rebuilding.
+
+### Troubleshooting
+
+- **Tablet does nothing after install:** log out and back in (GNOME Shell
+  loads the extension then). If it still does nothing, restart the computer.
+- **Added to the `input` group:** you must log out and back in for group
+  membership to take effect.
+- **Extension not loaded:** log out and back in once so GNOME Shell loads the
+  extension.
+- **Unsupported architecture:** only x86_64 and aarch64 pre-built archives
+  are shipped. riscv64 (and other) owners build from source with
+  `scripts/package.sh`.
+
+**Careful when changing `tabletd`.** gnome-shell (Mutter 51) crashes if a
+virtual tablet disappears, or the tablet changes owner, while the pen is in
+proximity, and that ends your session. The daemon avoids this by releasing
+everything before removing its devices, grabbing the tablet only while the pen
+is away, and never reusing the real pen's serial. Keep those guarantees when
+you change it, and stop the daemon with SIGTERM, never SIGKILL.
+
+## Details
+
+The installer puts everything under your home folder: `tabletd` as a
+systemd user service that starts with your session, the Tablet Center app
+in the app grid, and its GNOME Shell extension. Only the system part needs
+your password: WebKitGTK 4.1 when it is missing, a udev rule for
+`/dev/uinput`, and membership in the `input` group. Check the service with
+`systemctl --user status tabletd`.
+
+GNOME is required because the daemon reads the monitor layout from Mutter;
+other desktops are not supported (contributions welcome).
 
 ## How it works
 
@@ -145,27 +212,6 @@ tablet ──> tabletd ──> virtual pen, pointer and keyboard (uinput) ──
   `$XDG_RUNTIME_DIR/tabletd.sock`.
 - **`tablet-config`** (`crates/tablet-config`) holds the settings and the
   socket protocol shared by both.
-
-## Development
-
-```sh
-./dev.sh            # UI only; talks to the installed service
-./dev.sh --daemon   # also runs a local tabletd build if the service is stopped
-cargo test
-```
-
-The window loads `ui/` from a local server, so UI edits show up with
-Ctrl+R without rebuilding.
-
-The window loads `ui/` from a local server, so UI edits show up with
-Ctrl+R without rebuilding.
-
-**Careful when changing `tabletd`.** gnome-shell (Mutter 51) crashes if a
-virtual tablet disappears, or the tablet changes owner, while the pen is in
-proximity, and that ends your session. The daemon avoids this by releasing
-everything before removing its devices, grabbing the tablet only while the pen
-is away, and never reusing the real pen's serial. Keep those guarantees when
-you change it, and stop the daemon with SIGTERM, never SIGKILL.
 
 ## Credits
 
