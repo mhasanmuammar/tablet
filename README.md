@@ -94,7 +94,26 @@ your password: WebKitGTK 4.1 when it is missing, a udev rule for
 GNOME is required because the daemon reads the monitor layout from Mutter;
 other desktops are not supported (contributions welcome).
 
-### From source
+### Container build
+
+Building needs the Tauri Linux prerequisites (WebKitGTK 4.1, gtk, librsvg,
+pkg-config) and Rust. `scripts/container.sh` runs everything inside a
+container so the host never has to install them. podman is preferred; docker
+is used when podman is missing.
+
+```sh
+scripts/container.sh build      # build the toolchain image
+scripts/container.sh test      # run cargo test --locked --workspace
+scripts/container.sh release    # build + package the release archive
+scripts/container.sh shell     # interactive shell in the image
+```
+
+The release archive lands in `dist/tablet-center-<arch>-linux.tar.gz`, the
+same file `scripts/package.sh` produces. The image also ships a small runtime
+stage (`tablet-center:final`) with the binaries and their shared libraries
+under `/output/bin/`, plus the archive in `/output/`.
+
+## From source
 
 Install Rust (stable) and the
 [Tauri 2 Linux prerequisites](https://v2.tauri.app/start/prerequisites/#linux),
@@ -134,6 +153,9 @@ tablet ──> tabletd ──> virtual pen, pointer and keyboard (uinput) ──
 ./dev.sh --daemon   # also runs a local tabletd build if the service is stopped
 cargo test
 ```
+
+The window loads `ui/` from a local server, so UI edits show up with
+Ctrl+R without rebuilding.
 
 The window loads `ui/` from a local server, so UI edits show up with
 Ctrl+R without rebuilding.

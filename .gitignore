@@ -14,3 +14,6 @@
 .vscode/
 *.swp
 .DS_Store
+
+# Container build cache
+.container-cache/
