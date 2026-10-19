@@ -16,9 +16,23 @@ case "$arch" in
         shift
         target="$1"
         shift
+        # Derive the release arch name from the target triple so the archive
+        # is named e.g. tablet-center-aarch64-linux.tar.gz.
+        case "$target" in
+            aarch64-unknown-linux-gnu) arch="aarch64" ;;
+            x86_64-unknown-linux-gnu) arch="x86_64" ;;
+            riscv64gc-unknown-linux-gnu) arch="riscv64" ;;
+            *) echo "Unknown target triple: $target" >&2; exit 1 ;;
+        esac
         ;;
     --target=*)
         target="${arch#--target=}"
+        case "$target" in
+            aarch64-unknown-linux-gnu) arch="aarch64" ;;
+            x86_64-unknown-linux-gnu) arch="x86_64" ;;
+            riscv64gc-unknown-linux-gnu) arch="riscv64" ;;
+            *) echo "Unknown target triple: $target" >&2; exit 1 ;;
+        esac
         ;;
     x86_64|aarch64|riscv64)
         # Map the release arch to a Rust target triple.
