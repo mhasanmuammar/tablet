@@ -59,10 +59,10 @@ if [ -n "$target" ] && [ "$target" != "x86_64-unknown-linux-gnu" ]; then
     # Cross-compiling needs the target's std and the host's build deps. The
     # aarch64 std ships with rustup; the linker and libc come from the
     # cross toolchain installed by the release workflow.
-    cargo build --locked --release --target "$target" -p tabletd -p tablet-center
+    cargo build --release --target "$target" -p tabletd -p tablet-center
     bindir="target/$target/release"
 else
-    cargo build --locked --release -p tabletd -p tablet-center
+    cargo build --release -p tabletd -p tablet-center
     bindir="target/release"
 fi
 
