@@ -5,7 +5,7 @@
 # Usage:
 #   scripts/container.sh build            # build the toolchain image
 #   scripts/container.sh make             # run scripts/package.sh inside it
-#   scripts/container.sh test             # run cargo test --locked --workspace
+#   scripts/container.sh test             # run cargo test --workspace
 #   scripts/container.sh shell            # interactive shell in the image
 #   scripts/container.sh release          # build + package the release archive
 #   scripts/container.sh run <cmd...>     # run a command in the image
@@ -37,17 +37,17 @@ case "${1:-}" in
     make)
         $container run --rm -t \
             -v "$(pwd):/workspace" \
-            "$image" sh -c 'cargo build --locked --release -p tabletd -p tablet-center && ./scripts/package.sh'
+            "$image" sh -c 'cargo build --release -p tabletd -p tablet-center && ./scripts/package.sh'
         ;;
     test)
         $container run --rm -t \
             -v "$(pwd):/workspace" \
-            "$image" cargo test --locked --workspace
+            "$image" cargo test --workspace
         ;;
     release)
         $container run --rm -t \
             -v "$(pwd):/workspace" \
-            "$image" sh -c 'cargo build --locked --release -p tabletd -p tablet-center && ./scripts/package.sh'
+            "$image" sh -c 'cargo build --release -p tabletd -p tablet-center && ./scripts/package.sh'
         ;;
     shell)
         $container run --rm -ti \

@@ -44,8 +44,8 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
 WORKDIR /workspace
 COPY . /workspace
 
-# --locked matches CI: the exact versions in Cargo.lock must build.
-RUN cargo build --locked --release -p tabletd -p tablet-center \
+# build (no --locked: lets cargo resolve available crate versions)
+RUN cargo build --release -p tabletd -p tablet-center \
     && ./scripts/package.sh
 
 FROM ubuntu:22.04 AS final

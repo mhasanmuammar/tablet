@@ -127,7 +127,7 @@ is used when podman is missing.
 
 ```sh
 scripts/container.sh build      # build the toolchain image
-scripts/container.sh test      # run cargo test --locked --workspace
+scripts/container.sh test      # run cargo test --workspace
 scripts/container.sh release    # build + package the release archive
 scripts/container.sh shell     # interactive shell in the image
 ```
