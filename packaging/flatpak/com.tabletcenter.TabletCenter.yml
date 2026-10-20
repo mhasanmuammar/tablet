@@ -3,6 +3,8 @@ runtime: org.gnome.Platform
 runtime-version: '51'
 sdk: org.gnome.Sdk
 sdk-version: '51'
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
 command: tablet-center
 finish-args:
   - --device=all
@@ -18,6 +20,10 @@ finish-args:
 modules:
   - name: tablet-center
     buildsystem: simple
+    build-options:
+      build-args:
+        - --share=network
+      append-path: /usr/lib/sdk/rust-stable/bin
     build-commands:
       - cargo build --release -p tabletd -p tablet-center
       - install -Dm755 target/release/tabletd /app/bin/tabletd
