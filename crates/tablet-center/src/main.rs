@@ -333,6 +333,208 @@ fn show_shortcut(app: &tauri::AppHandle, request: &ShowRequest) -> tauri::Result
     Ok(())
 }
 
+/// Whether we are running inside a Flatpak sandbox.
+fn is_flatpak() -> bool {
+    std::env::var("FLATPAK_ID").is_ok()
+}
+
+/// Run a shell command on the host (via flatpak-spawn --host in Flatpak,
+/// or directly otherwise). Returns Ok(()) on success.
+fn host_cmd(program: &str, args: &[&str]) -> Result<(), String> {
+    let mut cmd = if is_flatpak() {
+        let mut c = Command::new("flatpak-spawn");
+        c.arg("--host").arg(program);
+        c
+    } else {
+        Command::new(program)
+    };
+    for a in args {
+        cmd.arg(a);
+    }
+    let status = cmd.status().map_err(|e| e.to_string())?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("{program} exited with {status}"))
+    }
+}
+
+/// Run a shell command on the host and capture stdout.
+fn host_output(program: &str, args: &[&str]) -> Result<String, String> {
+    let mut cmd = if is_flatpak() {
+        let mut c = Command::new("flatpak-spawn");
+        c.arg("--host").arg(program);
+        c
+    } else {
+        Command::new(program)
+    };
+    for a in args {
+        cmd.arg(a);
+    }
+    let out = cmd.output().map_err(|e| e.to_string())?;
+    Ok(String::from_utf8_lossy(&out.stdout).to_string())
+}
+
+#[derive(serde::Serialize)]
+struct HostIntegrationStatus {
+    extension_installed: bool,
+    service_installed: bool,
+    service_running: bool,
+    udev_rule_installed: bool,
+    user_in_input_group: bool,
+    all_ok: bool,
+}
+
+fn ext_dir() -> PathBuf {
+    home().unwrap_or_default().join(".local/share/gnome-shell/extensions/tablet-center@tabletcenter.dev")
+}
+
+fn service_path() -> PathBuf {
+    home().unwrap_or_default().join(".config/systemd/user/tabletd.service")
+}
+
+fn udev_rule_path() -> PathBuf {
+    PathBuf::from("/etc/udev/rules.d/70-tablet-center.rules")
+}
+
+#[tauri::command(async)]
+fn check_host_integration() -> HostIntegrationStatus {
+    let extension_installed = ext_dir().join("extension.js").is_file();
+    let service_installed = service_path().is_file();
+    let service_running = host_output("systemctl", &["--user", "is-active", "tabletd.service"])
+        .map(|s| s.trim() == "active")
+        .unwrap_or(false);
+    let udev_rule_installed = udev_rule_path().is_file();
+    let user_in_input_group = host_output("id", &["-nG"])
+        .map(|s| s.split_whitespace().any(|g| g == "input"))
+        .unwrap_or(false);
+    let all_ok = extension_installed && service_installed && service_running && udev_rule_installed && user_in_input_group;
+    HostIntegrationStatus {
+        extension_installed,
+        service_installed,
+        service_running,
+        udev_rule_installed,
+        user_in_input_group,
+        all_ok,
+    }
+}
+
+#[tauri::command(async)]
+fn install_host_integration() -> Result<(), String> {
+    let home = home()?;
+    let ext = ext_dir();
+    let svc = service_path();
+
+    // Install GNOME Shell extension from bundled resources.
+    // In Flatpak, resources are under /app; native builds use the install dir.
+    let ext_src = if is_flatpak() {
+        PathBuf::from("/app/share/gnome-shell/extensions/tablet-center@tabletcenter.dev")
+    } else {
+        // Find extension relative to the binary or use a known path.
+        PathBuf::from("gnome-extension/tablet-center@tabletcenter.dev")
+    };
+    if ext_src.is_dir() {
+        fs::create_dir_all(&ext).map_err(|e| e.to_string())?;
+        for entry in fs::read_dir(&ext_src).map_err(|e| e.to_string())? {
+            let entry = entry.map_err(|e| e.to_string())?;
+            let dest = ext.join(entry.file_name());
+            if entry.file_type().map_err(|e| e.to_string())?.is_file() {
+                fs::copy(entry.path(), &dest).map_err(|e| e.to_string())?;
+            }
+        }
+    }
+
+    // Install systemd service.
+    if let Some(parent) = svc.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let service_content = "[Unit]\nDescription=Tablet Center daemon\nAfter=graphical-session.target\n\n[Service]\nType=simple\nExecStart=%h/.local/bin/tabletd\nRestart=on-failure\n\n[Install]\nWantedBy=graphical-session.target\n";
+    fs::write(&svc, service_content).map_err(|e| e.to_string())?;
+
+    // Enable and start the service.
+    host_cmd("systemctl", &["--user", "daemon-reload"])?;
+    host_cmd("systemctl", &["--user", "enable", "tabletd.service"])?;
+    let _ = host_cmd("systemctl", &["--user", "restart", "tabletd.service"]);
+
+    // Install udev rule (requires sudo on host).
+    let udev_src = if is_flatpak() {
+        PathBuf::from("/app/share/udev/rules.d/70-tablet-center.rules")
+    } else {
+        PathBuf::from("packaging/70-tablet-center.rules")
+    };
+    if udev_src.is_file() {
+        host_cmd("sudo", &["install", "-m", "644", udev_src.to_str().unwrap_or(""), "/etc/udev/rules.d/70-tablet-center.rules"])?;
+        let _ = host_cmd("sudo", &["udevadm", "control", "--reload"]);
+        let _ = host_cmd("sudo", &["udevadm", "trigger", "--subsystem-match=misc", "--sysname-match=uinput"]);
+    }
+
+    // Add user to input group.
+    let user = std::env::var("USER").unwrap_or_default();
+    if !user.is_empty() {
+        let _ = host_cmd("sudo", &["usermod", "-aG", "input", &user]);
+    }
+
+    // Enable GNOME Shell extension.
+    let ext_id = "tablet-center@tabletcenter.dev";
+    let enabled = host_output("gsettings", &["get", "org.gnome.shell", "enabled-extensions"]).unwrap_or_default();
+    if !enabled.contains(ext_id) {
+        if enabled.trim() == "@as []" {
+            let _ = host_cmd("gsettings", &["set", "org.gnome.shell", "enabled-extensions", &format!("[\"{ext_id}\"]")]);
+        } else {
+            let new = enabled.trim().trim_end_matches(']').to_string() + &format!(", '{ext_id}']");
+            let _ = host_cmd("gsettings", &["set", "org.gnome.shell", "enabled-extensions", &new]);
+        }
+    }
+
+    // Mark as checked.
+    let marker = home()?.join(".config/tablet-center/.host-integration-checked");
+    if let Some(parent) = marker.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let _ = fs::write(marker, "");
+
+    Ok(())
+}
+
+#[tauri::command(async)]
+fn remove_host_integration() -> Result<(), String> {
+    let ext = ext_dir();
+    let svc = service_path();
+
+    // Remove extension.
+    let _ = fs::remove_dir_all(&ext);
+
+    // Remove service.
+    let _ = host_cmd("systemctl", &["--user", "disable", "--now", "tabletd.service"]);
+    let _ = fs::remove_file(&svc);
+    let _ = host_cmd("systemctl", &["--user", "daemon-reload"]);
+
+    // Remove udev rule.
+    let _ = host_cmd("sudo", &["rm", "-f", "/etc/udev/rules.d/70-tablet-center.rules"]);
+    let _ = host_cmd("sudo", &["udevadm", "control", "--reload"]);
+
+    // Remove extension from gsettings.
+    let ext_id = "tablet-center@tabletcenter.dev";
+    let enabled = host_output("gsettings", &["get", "org.gnome.shell", "enabled-extensions"]).unwrap_or_default();
+    if enabled.contains(ext_id) {
+        let new = enabled.replace(&format!(", '{ext_id}'"), "").replace(&format!("'{ext_id}', "), "").replace(&format!("'{ext_id}'"), "");
+        let new = if new.trim() == "[]" { "@as []".to_string() } else { new };
+        let _ = host_cmd("gsettings", &["set", "org.gnome.shell", "enabled-extensions", &new]);
+    }
+
+    // Remove marker.
+    let marker = home().unwrap_or_default().join(".config/tablet-center/.host-integration-checked");
+    let _ = fs::remove_file(marker);
+
+    Ok(())
+}
+
+#[tauri::command(async)]
+fn is_first_launch() -> bool {
+    let marker = home().unwrap_or_default().join(".config/tablet-center/.host-integration-checked");
+    !marker.is_file()
+}
+
 /// Interfaces: (id, page, draws its own title bar). Keep in step with
 /// UI_STYLES in app.js.
 const UI_STYLES: [(&str, &str, bool); 2] = [("classic", "index.html", false), ("glass", "glass.html", true)];
@@ -381,7 +583,8 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![get_config, save_config, save_shell_menus, status, restart_daemon,
             autostart_enabled, set_autostart, list_backups, create_backup, restore_backup,
-            delete_backup, open_backups_folder, reset_config, run_shortcut_action, close_shortcut, pending_shortcut, set_ui_style])
+            delete_backup, open_backups_folder, reset_config, run_shortcut_action, close_shortcut, pending_shortcut, set_ui_style,
+            check_host_integration, install_host_integration, remove_host_integration, is_first_launch])
         .build(tauri::generate_context!())
         .expect("error while running Tablet Center")
         .run(move |_, event| {

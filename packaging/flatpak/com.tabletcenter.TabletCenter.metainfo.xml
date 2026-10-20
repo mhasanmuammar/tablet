@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.tabletcenter.TabletCenter</id>
+  <name>Tablet Center</name>
+  <summary>Settings app and daemon for Wacom pen tablets on GNOME (Wayland)</summary>
+  <description>
+    <p>
+      Tablet Center is a settings app and a small daemon for Wacom pen tablets
+      on GNOME (Wayland). It adds features the Linux driver lacks, starting with
+      pan scroll as it works on macOS.
+    </p>
+    <p>
+      Features include pan scroll, pen gestures, on-screen shortcuts (Express
+      menu, Radial menu, App shortcuts, Keypad), pen button configuration,
+      tip feel pressure curves, display mapping, ExpressKeys, and more.
+    </p>
+  </description>
+  <launchable type="desktop-id">com.tabletcenter.TabletCenter.desktop</launchable>
+  <screenshots>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/mhasanmuammar/tablet/main/docs/screenshots/pen.png</image>
+    </screenshot>
+  </screenshots>
+  <url type="homepage">https://github.com/mhasanmuammar/tablet</url>
+  <url type="bugtracker">https://github.com/mhasanmuammar/tablet/issues</url>
+  <developer id="com.tabletcenter">
+    <name>Tablet Center contributors</name>
+  </developer>
+  <content_rating type="oars-1.1" />
+  <releases>
+    <release version="0.1.2" date="2026-10-20" />
+  </releases>
+  <categories>
+    <category>Settings</category>
+    <category>HardwareSettings</category>
+  </categories>
+  <keywords>
+    <keyword>wacom</keyword>
+    <keyword>tablet</keyword>
+    <keyword>pen</keyword>
+    <keyword>stylus</keyword>
+  </keywords>
+</component>

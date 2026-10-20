@@ -1330,8 +1330,15 @@ function settingsPage(tab = "general") {
       <label class="autostart-row" for="autostart">${esc(t("Tablet Center autostart"))}
         <span class="switch"><input type="checkbox" id="autostart" disabled><span></span></span>
       </label>
-      <hr>
-      ${shellMenusSwitch()}`;
+  <hr>
+  <h3>${esc(t("Host integration"))}</h3>
+  <div id="host-integration-status"></div>
+  <div style="display:flex;gap:8px;margin-top:8px">
+    <button class="button" id="host-integrate">${esc(t("Set up host integration"))}</button>
+    <button class="button" id="host-remove">${esc(t("Remove host integration"))}</button>
+    <button class="button" id="host-recheck">${esc(t("Re-check"))}</button>
+  </div>
+  <p class="hint">${esc(t("Installs the GNOME Shell extension, systemd service, udev rules, and adds your user to the input group. Requires administrator rights."))}</p>`;
   } else if (tab === "backups") {
     body = `
       <div class="backup-buttons">
@@ -1414,6 +1421,32 @@ function mountSettings(tab) {
   const handle = (callback) => async () => {
     try { await callback(); } catch (e) { toast(String(e)); }
   };
+  // Host integration handlers (general tab)
+  const hostIntegrate = $("#host-integrate");
+  if (hostIntegrate) {
+    hostIntegrate.onclick = handle(async () => {
+      await invoke("install_host_integration");
+      await renderHostIntegration();
+      toast(t("Host integration installed. Log out and back in for changes to take effect."));
+    });
+  }
+  const hostRemove = $("#host-remove");
+  if (hostRemove) {
+    hostRemove.onclick = handle(async () => {
+      if (!await settingsDialog(t("Remove all host integration components?"), t("Remove"))) return;
+      await invoke("remove_host_integration");
+      await renderHostIntegration();
+      toast(t("Host integration removed."));
+    });
+  }
+  const hostRecheck = $("#host-recheck");
+  if (hostRecheck) {
+    hostRecheck.onclick = handle(async () => {
+      await renderHostIntegration();
+    });
+  }
+  renderHostIntegration().catch(() => {});
+
   if (tab === "backups") {
     refreshBackups().catch((e) => toast(String(e)));
     $("#new-backup").onclick = handle(async () => {
@@ -1655,8 +1688,96 @@ async function init() {
   status = await invoke("status");
   window.addEventListener("hashchange", render);
   render();
+  checkFirstLaunch();
 }
 
+async function renderHostIntegration() {
+  try {
+    const s = await invoke("check_host_integration");
+    const el = $("#host-integration-status");
+    if (!el) return;
+    const items = [
+      [t("GNOME Shell extension"), s.extension_installed],
+      [t("Systemd service"), s.service_installed],
+      [t("Service running"), s.service_running],
+      [t("Udev rule"), s.udev_rule_installed],
+      [t("Input group"), s.user_in_input_group],
+    ];
+    el.innerHTML = items.map(([label, ok]) =>
+      `<p style="margin:2px 0"><span class="status-dot ${ok ? "on" : ""}"></span>${esc(label)} — ${ok ? esc(t("OK")) : esc(t("Missing"))}</p>`
+    ).join("");
+  } catch (e) { toast(String(e)); }
+}
+
+function showHostIntegrationModal() {
+  const backdrop = document.createElement("div");
+  backdrop.className = "dialog-backdrop";
+  backdrop.innerHTML = `<div class="dialog" role="dialog" aria-modal="true" style="max-width:480px">
+    <h3>${esc(t("Host integration setup"))}</h3>
+    <p>${esc(t("Tablet Center needs a few components installed on your host system to work fully:"))}</p>
+    <div id="host-modal-status"></div>
+    <p class="hint">${esc(t("This will install the GNOME Shell extension, a systemd service, a udev rule, and add your user to the input group. Administrator rights may be required."))}</p>
+    <div class="dialog-buttons">
+      <button type="button" class="button" data-cancel>${esc(t("Skip for now"))}</button>
+      <button type="button" class="button primary" id="host-modal-setup">${esc(t("Set up now"))}</button>
+    </div></div>`;
+  document.body.appendChild(backdrop);
+  const close = () => backdrop.remove();
+  backdrop.querySelector("[data-cancel]").onclick = close;
+  const setupBtn = backdrop.querySelector("#host-modal-setup");
+  setupBtn.onclick = async () => {
+    setupBtn.disabled = true;
+    setupBtn.textContent = t("Setting up...");
+    try {
+      await invoke("install_host_integration");
+      await renderHostIntegration();
+      const status = await invoke("check_host_integration");
+      const modalStatus = backdrop.querySelector("#host-modal-status");
+      if (modalStatus) {
+        modalStatus.innerHTML = Object.entries({
+          [t("GNOME Shell extension")]: status.extension_installed,
+          [t("Systemd service")]: status.service_installed,
+          [t("Service running")]: status.service_running,
+          [t("Udev rule")]: status.udev_rule_installed,
+          [t("Input group")]: status.user_in_input_group,
+        }).map(([l, ok]) => `<p style="margin:2px 0"><span class="status-dot ${ok ? "on" : ""}"></span>${esc(l)} — ${ok ? esc(t("OK")) : esc(t("Missing"))}</p>`).join("");
+      }
+      if (status.user_in_input_group === false) {
+        toast(t("Log out and back in for the input group to take effect."));
+      }
+      close();
+    } catch (e) {
+      toast(String(e));
+      setupBtn.disabled = false;
+      setupBtn.textContent = t("Set up now");
+    }
+  };
+  // Render initial status
+  invoke("check_host_integration").then((s) => {
+    const el = backdrop.querySelector("#host-modal-status");
+    if (el) {
+      el.innerHTML = Object.entries({
+        [t("GNOME Shell extension")]: s.extension_installed,
+        [t("Systemd service")]: s.service_installed,
+        [t("Service running")]: s.service_running,
+        [t("Udev rule")]: s.udev_rule_installed,
+        [t("Input group")]: s.user_in_input_group,
+      }).map(([l, ok]) => `<p style="margin:2px 0"><span class="status-dot ${ok ? "on" : ""}"></span>${esc(l)} — ${ok ? esc(t("OK")) : esc(t("Missing"))}</p>`).join("");
+    }
+  }).catch(() => {});
+}
+
+async function checkFirstLaunch() {
+  try {
+    const first = await invoke("is_first_launch");
+    if (first) {
+      const status = await invoke("check_host_integration");
+      if (!status.all_ok) {
+        showHostIntegrationModal();
+      }
+    }
+  } catch (e) { /* ignore */ }
+}
 async function loadConfig() {
   config = { ...structuredClone(DEFAULTS), ...(await invoke("get_config")) };
 }
