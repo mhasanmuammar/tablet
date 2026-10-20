@@ -74,7 +74,7 @@ jobs:
           # The runner user is non-root and has no polkit agent, so system
           # flatpak operations are not allowed. Use --user instead.
           mkdir -p ~/.local/share/flatpak
-          flatpak --user remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
       - name: Install GNOME runtime and SDK
         run: |
           flatpak --user install -y flathub org.gnome.Platform//51 org.gnome.Sdk//51
