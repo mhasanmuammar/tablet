@@ -61,8 +61,34 @@ jobs:
           name: archive-aarch64
           path: ${{ steps.package.outputs.archive }}
 
+  flatpak:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install flatpak-builder
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder
+      - name: Add Flathub remote
+        run: |
+          flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+      - name: Install GNOME runtime and SDK
+        run: |
+          flatpak install -y flathub org.gnome.Platform//48 org.gnome.Sdk//48
+      - name: Build Flatpak
+        run: |
+          flatpak-builder --force-clean build-dir packaging/flatpak/com.tabletcenter.TabletCenter.yml
+      - name: Create bundle
+        run: |
+          flatpak build-export repo build-dir
+          flatpak build-bundle repo com.tabletcenter.TabletCenter.flatpak com.tabletcenter.TabletCenter
+      - uses: actions/upload-artifact@v4
+        with:
+          name: flatpak
+          path: com.tabletcenter.TabletCenter.flatpak
+
   release:
-    needs: [package-x86_64, package-aarch64]
+    needs: [package-x86_64, package-aarch64, flatpak]
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v7
@@ -71,6 +97,11 @@ jobs:
         with:
           path: dist
           merge-multiple: true
+      - name: Download Flatpak bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: flatpak
+          path: .
       - name: Build bootstrap installer
         run: |
           tmpdir=$(mktemp -d)
@@ -85,3 +116,4 @@ jobs:
             dist/tablet-center-x86_64-linux.tar.gz
             dist/tablet-center-aarch64-linux.tar.gz
             dist/install.sh.tar.gz
+            com.tabletcenter.TabletCenter.flatpak

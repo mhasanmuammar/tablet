@@ -15,32 +15,11 @@ finish-args:
   - --share=network
   - --share=ipc
 modules:
-  - name: tablet-config
-    buildsystem: cargo
-    config-opts:
-      - --offline
-    sources:
-      - type: dir
-        path: ../..
-  - name: tabletd
-    buildsystem: cargo
-    config-opts:
-      - --offline
-    sources:
-      - type: dir
-        path: ../..
-    build-commands:
-      - cargo build --release -p tabletd
-      - install -Dm755 target/release/tabletd /app/bin/tabletd
   - name: tablet-center
-    buildsystem: cargo
-    config-opts:
-      - --offline
-    sources:
-      - type: dir
-        path: ../..
+    buildsystem: simple
     build-commands:
-      - cargo build --release -p tablet-center
+      - cargo build --release -p tabletd -p tablet-center
+      - install -Dm755 target/release/tabletd /app/bin/tabletd
       - install -Dm755 target/release/tablet-center /app/bin/tablet-center
       - install -Dm644 packaging/tablet-center.desktop /app/share/applications/com.tabletcenter.TabletCenter.desktop
       - install -Dm644 packaging/icons/tablet-center-256.png /app/share/icons/hicolor/256x256/apps/com.tabletcenter.TabletCenter.png
@@ -53,7 +32,13 @@ modules:
       - install -Dm644 gnome-extension/tablet-center@tabletcenter.dev/stylesheet.css /app/share/gnome-shell/extensions/tablet-center@tabletcenter.dev/stylesheet.css
       - install -Dm644 packaging/70-tablet-center.rules /app/share/udev/rules.d/70-tablet-center.rules
       - install -Dm644 packaging/tabletd.service /app/share/systemd/user/tabletd.service
+    sources:
+      - type: dir
+        path: ../..
   - name: metainfo
     buildsystem: simple
     build-commands:
       - install -Dm644 com.tabletcenter.TabletCenter.metainfo.xml /app/share/metainfo/com.tabletcenter.TabletCenter.metainfo.xml
+    sources:
+      - type: file
+        path: com.tabletcenter.TabletCenter.metainfo.xml
