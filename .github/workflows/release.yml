@@ -75,7 +75,7 @@ jobs:
         run: |
           tmpdir=$(mktemp -d)
           mkdir -p "$tmpdir/install"
-          cp install.sh uninstall.sh packaging gnome-extension LICENSE README.md "$tmpdir/install/"
+          cp -r install.sh uninstall.sh packaging gnome-extension LICENSE README.md "$tmpdir/install/"
           tar -C "$tmpdir" -czf dist/install.sh.tar.gz install
           rm -rf "$tmpdir"
       - uses: softprops/action-gh-release@v3
