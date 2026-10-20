@@ -1,7 +1,8 @@
 app-id: com.tabletcenter.TabletCenter
 runtime: org.gnome.Platform
-runtime-version: '48'
+runtime-version: '51'
 sdk: org.gnome.Sdk
+sdk-version: '51'
 command: tablet-center
 finish-args:
   - --device=all
