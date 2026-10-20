@@ -11,12 +11,8 @@ permissions:
   contents: write
 
 jobs:
-  package:
-    # The oldest supported runner, so the binaries run on older glibc too.
+  package-x86_64:
     runs-on: ubuntu-22.04
-    strategy:
-      matrix:
-        arch: [x86_64, aarch64]
     steps:
       - uses: actions/checkout@v7
       - name: Tag matches Cargo.toml
@@ -28,26 +24,45 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
       - run: cargo test --workspace
-      - name: Install cross toolchain (aarch64)
-        if: matrix.arch == 'aarch64'
-        run: |
-          rustup target add aarch64-unknown-linux-gnu
-          sudo apt-get install -y gcc-aarch64-linux-gnu
       - id: package
         run: |
-          case "${{ matrix.arch }}" in
-            aarch64) archive=$(scripts/package.sh --target aarch64-unknown-linux-gnu | tail -1) ;;
-            *)       archive=$(scripts/package.sh x86_64 | tail -1) ;;
-          esac
+          archive=$(scripts/package.sh | tail -1)
+          test -f "$archive" || { echo "Archive not produced: $archive" >&2; exit 1; }
           echo "archive=$archive" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4
         with:
-          name: archive-${{ matrix.arch }}
+          name: archive-x86_64
+          path: ${{ steps.package.outputs.archive }}
+
+  package-aarch64:
+    runs-on: ubuntu-22.04-arm
+    steps:
+      - uses: actions/checkout@v7
+      - name: Tag matches Cargo.toml
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          test "v$version" = "$GITHUB_REF_NAME"
+      - name: System libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --workspace
+      - id: package
+        run: |
+          archive=$(scripts/package.sh | tail -1)
+          test -f "$archive" || { echo "Archive not produced: $archive" >&2; exit 1; }
+          echo "archive=$archive" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: archive-aarch64
           path: ${{ steps.package.outputs.archive }}
 
   release:
-    needs: package
+    needs: [package-x86_64, package-aarch64]
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v7

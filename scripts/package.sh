@@ -4,67 +4,25 @@
 # releases. The name has no version so the README can link to
 # releases/latest/download/. Usage:
 #   scripts/package.sh                # native build, arch = uname -m
-#   scripts/package.sh aarch64        # cross-compile for aarch64
-#   scripts/package.sh --target aarch64-unknown-linux-gnu
 set -eu
 cd "$(dirname "$0")/.."
 
-arch="${1:-}"
-target=""
+arch="$(uname -m)"
 case "$arch" in
-    --target)
-        shift
-        target="$1"
-        shift
-        # Derive the release arch name from the target triple so the archive
-        # is named e.g. tablet-center-aarch64-linux.tar.gz.
-        case "$target" in
-            aarch64-unknown-linux-gnu) arch="aarch64" ;;
-            x86_64-unknown-linux-gnu) arch="x86_64" ;;
-            riscv64gc-unknown-linux-gnu) arch="riscv64" ;;
-            *) echo "Unknown target triple: $target" >&2; exit 1 ;;
-        esac
-        ;;
-    --target=*)
-        target="${arch#--target=}"
-        case "$target" in
-            aarch64-unknown-linux-gnu) arch="aarch64" ;;
-            x86_64-unknown-linux-gnu) arch="x86_64" ;;
-            riscv64gc-unknown-linux-gnu) arch="riscv64" ;;
-            *) echo "Unknown target triple: $target" >&2; exit 1 ;;
-        esac
-        ;;
-    x86_64|aarch64|riscv64)
-        # Map the release arch to a Rust target triple.
-        case "$arch" in
-            x86_64)   target="x86_64-unknown-linux-gnu" ;;
-            aarch64)  target="aarch64-unknown-linux-gnu" ;;
-            riscv64)  target="riscv64gc-unknown-linux-gnu" ;;
-        esac
-        ;;
-    "")
-        arch="$(uname -m)"
-        target="x86_64-unknown-linux-gnu"
-        case "$arch" in
-            aarch64|arm64) target="aarch64-unknown-linux-gnu" ;;
-        esac
-        ;;
+    x86_64|amd64)    arch=x86_64 ;;
+    aarch64|arm64)   arch=aarch64 ;;
+    *) echo "Unsupported architecture: $arch" >&2; exit 1 ;;
 esac
 
-# The release archive name uses the arch, not the triple (aarch64, not
-# aarch64-unknown-linux-gnu), so install.sh can pick by uname -m.
+target="x86_64-unknown-linux-gnu"
+case "$arch" in
+    aarch64) target="aarch64-unknown-linux-gnu" ;;
+esac
+
 name="tablet-center-${arch}-linux"
 
-if [ -n "$target" ] && [ "$target" != "x86_64-unknown-linux-gnu" ]; then
-    # Cross-compiling needs the target's std and the host's build deps. The
-    # aarch64 std ships with rustup; the linker and libc come from the
-    # cross toolchain installed by the release workflow.
-    cargo build --release --target "$target" -p tabletd -p tablet-center
-    bindir="target/$target/release"
-else
-    cargo build --release -p tabletd -p tablet-center
-    bindir="target/release"
-fi
+cargo build --release -p tabletd -p tablet-center
+bindir="target/release"
 
 stage="dist/tablet-center"
 rm -rf "$stage"
