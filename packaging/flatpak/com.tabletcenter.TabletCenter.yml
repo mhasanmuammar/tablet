@@ -2,7 +2,6 @@ app-id: com.tabletcenter.TabletCenter
 runtime: org.gnome.Platform
 runtime-version: '51'
 sdk: org.gnome.Sdk
-sdk-version: '51'
 sdk-extensions:
   - org.freedesktop.Sdk.Extension.rust-stable
 command: tablet-center
