@@ -69,19 +69,22 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y flatpak flatpak-builder
-      - name: Add Flathub remote
+      - name: Setup user flatpak
         run: |
-          flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          # The runner user is non-root and has no polkit agent, so system
+          # flatpak operations are not allowed. Use --user instead.
+          mkdir -p ~/.local/share/flatpak
+          flatpak --user remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
       - name: Install GNOME runtime and SDK
         run: |
-          flatpak install -y flathub org.gnome.Platform//48 org.gnome.Sdk//48
+          flatpak --user install -y flathub org.gnome.Platform//51 org.gnome.Sdk//51
       - name: Build Flatpak
         run: |
-          flatpak-builder --force-clean build-dir packaging/flatpak/com.tabletcenter.TabletCenter.yml
+          flatpak-builder --user --force-clean build-dir packaging/flatpak/com.tabletcenter.TabletCenter.yml
       - name: Create bundle
         run: |
-          flatpak build-export repo build-dir
-          flatpak build-bundle repo com.tabletcenter.TabletCenter.flatpak com.tabletcenter.TabletCenter
+          flatpak build-export --user repo build-dir
+          flatpak build-bundle --user repo com.tabletcenter.TabletCenter.flatpak com.tabletcenter.TabletCenter
       - uses: actions/upload-artifact@v4
         with:
           name: flatpak
