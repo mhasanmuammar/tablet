@@ -421,7 +421,7 @@ fn check_host_integration() -> HostIntegrationStatus {
 
 #[tauri::command(async)]
 fn install_host_integration() -> Result<(), String> {
-    let home = home()?;
+    let home_dir = home()?;
     let ext = ext_dir();
     let svc = service_path();
 
@@ -487,7 +487,7 @@ fn install_host_integration() -> Result<(), String> {
     }
 
     // Mark as checked.
-    let marker = home()?.join(".config/tablet-center/.host-integration-checked");
+    let marker = home_dir.join(".config/tablet-center/.host-integration-checked");
     if let Some(parent) = marker.parent() {
         let _ = fs::create_dir_all(parent);
     }
