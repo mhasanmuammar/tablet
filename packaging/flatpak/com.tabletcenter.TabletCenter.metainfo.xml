@@ -31,6 +31,18 @@
   </developer>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="0.2.0-beta.1" date="2026-10-22">
+      <description>
+        <p>Beta: the Flatpak install now runs a working daemon and detects the tablet reliably.</p>
+        <ul>
+          <li>Flatpak setup stages the tabletd daemon on the host and points the systemd unit at it, so the driver actually starts.</li>
+          <li>The udev rule grants uaccess ACLs for tablets, mice and touchpads; the daemon no longer depends on a freshly re-login group membership.</li>
+          <li>Host setup re-runs when the installed rule is outdated, restarts the daemon after privileged steps, and shows a live step-by-step progress log.</li>
+          <li>Persistent setup notices on home and settings; the app prompts whenever host integration is incomplete.</li>
+          <li>Restart Driver works from the Flatpak (systemctl routed to the host).</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.1.7" date="2026-10-21">
       <description>
         <p>Fixes the Flatpak host integration setup: the administrator prompt is now the standard desktop dialog (polkit) instead of sudo, and the setup dialog can no longer be skipped.</p>
