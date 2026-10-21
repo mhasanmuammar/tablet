@@ -449,9 +449,31 @@ fn udev_rule_source() -> Option<PathBuf> {
 }
 
 fn user_in_input_group() -> bool {
-    host_output("id", &["-nG"])
+    // Look the user up by name: `id -nG <name>` queries the group database
+    // fresh, while `id -nG` reports the calling process's supplementary
+    // groups — stale after a usermod until relogin (e.g. the systemd user
+    // manager spawned by flatpak-spawn keeps its old group set).
+    let name = match host_output("id", &["-un"]) {
+        Ok(s) => s.trim().to_string(),
+        Err(_) => return false,
+    };
+    if name.is_empty() {
+        return false;
+    }
+    host_output("id", &["-nG", &name])
         .map(|s| s.split_whitespace().any(|g| g == "input"))
         .unwrap_or(false)
+}
+
+/// Whether the udev rule exists — on the HOST. /etc is not shared with the
+/// Flatpak sandbox, so a sandbox-local is_file() check is always false
+/// there.
+fn udev_rule_installed_on_host() -> bool {
+    if is_flatpak() {
+        host_cmd("test", &["-f", udev_rule_path().to_str().unwrap_or_default()]).is_ok()
+    } else {
+        udev_rule_path().is_file()
+    }
 }
 
 /// Builds the single privileged script for host integration. `rule_path`
@@ -480,7 +502,7 @@ fn check_host_integration() -> HostIntegrationStatus {
     let service_running = host_output("systemctl", &["--user", "is-active", "tabletd.service"])
         .map(|s| s.trim() == "active")
         .unwrap_or(false);
-    let udev_rule_installed = udev_rule_path().is_file();
+    let udev_rule_installed = udev_rule_installed_on_host();
     let user_in_input_group = user_in_input_group();
     let all_ok = extension_installed && service_installed && service_running && udev_rule_installed && user_in_input_group;
     HostIntegrationStatus {
@@ -522,7 +544,31 @@ fn install_host_integration() -> Result<(), String> {
     if let Some(parent) = svc.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-    let service_content = "[Unit]\nDescription=Tablet Center daemon\nAfter=graphical-session.target\n\n[Service]\nType=simple\nExecStart=%h/.local/bin/tabletd\nRestart=on-failure\n\n[Install]\nWantedBy=graphical-session.target\n";
+    // Install systemd service. Exec path depends on runtime: in Flatpak the
+    // daemon is not on the host yet, so copy it from /app/bin into the
+    // host-visible helper directory (~/.local/share is shared with the
+    // host's filesystem) and point systemd there. Native installs can rely
+    // on install.sh having placed tabletd in ~/.local/bin.
+    let daemon_bin = if is_flatpak() {
+        let dir = home_dir.join(".local/share/tablet-center");
+        fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        let dst = dir.join("tabletd");
+        // Remove first: copying over a running daemon fails (ETXTBSY).
+        let _ = fs::remove_file(&dst);
+        fs::copy("/app/bin/tabletd", &dst).map_err(|e| format!("Could not stage the daemon for the host: {e}"))?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&dst, fs::Permissions::from_mode(0o755)).map_err(|e| e.to_string())?;
+        }
+        dst
+    } else {
+        home_dir.join(".local/bin/tabletd")
+    };
+    let service_content = format!(
+        "[Unit]\nDescription=Tablet Center daemon\nAfter=graphical-session.target\n\n[Service]\nType=simple\nExecStart={}\nRestart=on-failure\n\n[Install]\nWantedBy=graphical-session.target\n",
+        daemon_bin.display()
+    );
     fs::write(&svc, service_content).map_err(|e| e.to_string())?;
 
     // Enable and start the service.
@@ -534,7 +580,7 @@ fn install_host_integration() -> Result<(), String> {
     // for them the standard way (polkit): one authentication dialog for all
     // privileged steps, run only when the steps are not already done (the
     // native installer already sets both up).
-    let need_rule = !udev_rule_path().is_file();
+    let need_rule = !udev_rule_installed_on_host();
     let host_rule_path = if need_rule {
         let src = udev_rule_source()
             .ok_or_else(|| "The udev rule template is missing from this install; re-run install.sh or reinstall the Flatpak.".to_string())?;
@@ -588,9 +634,13 @@ fn remove_host_integration() -> Result<(), String> {
     let _ = host_cmd("systemctl", &["--user", "disable", "--now", "tabletd.service"]);
     let _ = fs::remove_file(&svc);
     let _ = host_cmd("systemctl", &["--user", "daemon-reload"]);
+    // Remove the daemon staged for the host (Flatpak installs).
+    let _ = fs::remove_file(home().unwrap_or_default().join(".local/share/tablet-center/tabletd"));
+    // Best effort: also clear service leftovers from former native installs.
+    let _ = fs::remove_file(home().unwrap_or_default().join(".local/bin/tabletd"));
 
     // Remove udev rule (needs administrator rights; see host_privileged).
-    if udev_rule_path().is_file() {
+    if udev_rule_installed_on_host() {
         host_privileged(
             "#!/bin/sh\n# Tablet Center host cleanup, run as root via pkexec.\nset -e\nrm -f /etc/udev/rules.d/70-tablet-center.rules\nudevadm control --reload\n",
         )?;
