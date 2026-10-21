@@ -1,5 +1,5 @@
 [package]
-name = "tablet-center"
+name = "tabletforge"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

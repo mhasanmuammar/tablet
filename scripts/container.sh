@@ -26,7 +26,7 @@ else
     exit 1
 fi
 
-image=tablet-center:builder
+image=tabletforge:builder
 
 case "${1:-}" in
     build)
@@ -37,7 +37,7 @@ case "${1:-}" in
     make)
         $container run --rm -t \
             -v "$(pwd):/workspace" \
-            "$image" sh -c 'cargo build --release -p tabletd -p tablet-center && ./scripts/package.sh'
+            "$image" sh -c 'cargo build --release -p tabletforged -p tabletforge && ./scripts/package.sh'
         ;;
     test)
         $container run --rm -t \
@@ -47,7 +47,7 @@ case "${1:-}" in
     release)
         $container run --rm -t \
             -v "$(pwd):/workspace" \
-            "$image" sh -c 'cargo build --release -p tabletd -p tablet-center && ./scripts/package.sh'
+            "$image" sh -c 'cargo build --release -p tabletforged -p tabletforge && ./scripts/package.sh'
         ;;
     shell)
         $container run --rm -ti \

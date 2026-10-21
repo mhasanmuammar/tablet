@@ -3,7 +3,7 @@
 /dist/
 
 # Tauri generated files
-/crates/tablet-center/gen/
+/crates/tabletforge/gen/
 
 # Driver images must never be committed.
 *.dmg

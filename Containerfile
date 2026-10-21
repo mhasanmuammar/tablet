@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-# Tablet Center container build.
+# TabletForge container build.
 #
 # Two stages:
 #  builder  - the toolchain and every build dependency (GTK, WebKitGTK,
@@ -45,7 +45,7 @@ WORKDIR /workspace
 COPY . /workspace
 
 # build (no --locked: lets cargo resolve available crate versions)
-RUN cargo build --release -p tabletd -p tablet-center \
+RUN cargo build --release -p tabletforged -p tabletforge \
     && ./scripts/package.sh
 
 FROM ubuntu:22.04 AS final
@@ -64,7 +64,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /workspace/dist/ /output/
-COPY --from=builder /workspace/target/release/tabletd /output/bin/tabletd
-COPY --from=builder /workspace/target/release/tablet-center /output/bin/tablet-center
+COPY --from=builder /workspace/target/release/tabletforged /output/bin/tabletforged
+COPY --from=builder /workspace/target/release/tabletforge /output/bin/tabletforge
 
 CMD ["sh", "-c", "ls -l /output/bin && ls -l /output"]

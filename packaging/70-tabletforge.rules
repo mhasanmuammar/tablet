@@ -1,5 +1,5 @@
-# Tablet Center: lets the signed-in user create the virtual pen, pointer and
-# keyboard that tabletd drives (uinput), and lets it read the physical
+# TabletForge: lets the signed-in user create the virtual pen, pointer and
+# keyboard that tabletforged drives (uinput), and lets it read the physical
 # tablet and the mice. Access is granted with uaccess — an ACL for the
 # logged-in user — because a long-lived systemd user manager that was not
 # restarted does not pick up later "input" group memberships.

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/tablet-config", "crates/tabletd", "crates/tablet-center"]
+members = ["crates/tablet-config", "crates/tabletforged", "crates/tabletforge"]
 
 [workspace.package]
 version = "0.2.0-beta.1"

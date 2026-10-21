@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>com.tabletcenter.TabletCenter</id>
+  <id>org.tabletforge.TabletForge</id>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-or-later</project_license>
-  <name>Tablet Center</name>
+  <name>TabletForge</name>
   <summary>Settings app and daemon for Wacom pen tablets on GNOME (Wayland)</summary>
   <description>
     <p>
-      Tablet Center is a settings app and a small daemon for Wacom pen tablets
+      TabletForge is a settings app and a small daemon for Wacom pen tablets
       on GNOME (Wayland). It adds features the Linux driver lacks, starting with
       pan scroll as it works on macOS.
     </p>
@@ -17,7 +17,7 @@
       tip feel pressure curves, display mapping, ExpressKeys, and more.
     </p>
   </description>
-  <launchable type="desktop-id">com.tabletcenter.TabletCenter.desktop</launchable>
+  <launchable type="desktop-id">org.tabletforge.TabletForge.desktop</launchable>
   <screenshots>
     <screenshot type="default">
       <image>https://raw.githubusercontent.com/mhasanmuammar/tablet/main/docs/screenshots/pen.png</image>
@@ -26,8 +26,8 @@
   </screenshots>
   <url type="homepage">https://github.com/mhasanmuammar/tablet</url>
   <url type="bugtracker">https://github.com/mhasanmuammar/tablet/issues</url>
-  <developer id="com.tabletcenter">
-    <name>Tablet Center contributors</name>
+  <developer id="com.tabletforge">
+    <name>TabletForge contributors</name>
   </developer>
   <content_rating type="oars-1.1" />
   <releases>
@@ -35,7 +35,7 @@
       <description>
         <p>Beta: the Flatpak install now runs a working daemon and detects the tablet reliably.</p>
         <ul>
-          <li>Flatpak setup stages the tabletd daemon on the host and points the systemd unit at it, so the driver actually starts.</li>
+          <li>Flatpak setup stages the tabletforged daemon on the host and points the systemd unit at it, so the driver actually starts.</li>
           <li>The udev rule grants uaccess ACLs for tablets, mice and touchpads; the daemon no longer depends on a freshly re-login group membership.</li>
           <li>Host setup re-runs when the installed rule is outdated, restarts the daemon after privileged steps, and shows a live step-by-step progress log.</li>
           <li>Persistent setup notices on home and settings; the app prompts whenever host integration is incomplete.</li>

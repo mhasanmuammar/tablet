@@ -1,9 +1,9 @@
 [Desktop Entry]
 Type=Application
-Name=Tablet Center
+Name=TabletForge
 Comment=Settings app and daemon for Wacom pen tablets on GNOME (Wayland)
-Exec=tablet-center
-Icon=com.tabletcenter.TabletCenter
+Exec=tabletforge
+Icon=org.tabletforge.TabletForge
 Categories=Settings;HardwareSettings;
 Terminal=false
-StartupWMClass=tablet-center
+StartupWMClass=tabletforge

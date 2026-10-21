@@ -1,5 +1,5 @@
 // Pen feedback and on-screen shortcuts drawn by GNOME Shell itself: no
-// window, so nothing takes the focus or gets the map animation. tabletd
+// window, so nothing takes the focus or gets the map animation. tabletforged
 // calls it over D-Bus.
 
 import Clutter from 'gi://Clutter';
@@ -10,11 +10,11 @@ import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
 import {MenuHost} from './menus.js';
 
-const BUS_NAME = 'dev.tabletcenter.Shell';
-const OBJECT_PATH = '/dev/tabletcenter/Shell';
+const BUS_NAME = 'org.tabletforge.Shell';
+const OBJECT_PATH = '/org/tabletforge/Shell';
 const INTERFACE = `
 <node>
-  <interface name="dev.tabletcenter.Shell">
+  <interface name="org.tabletforge.Shell">
     <!-- A ring at desktop point (x, y) that fills in over ms milliseconds. -->
     <method name="ShowHoldRing">
       <arg type="i" direction="in" name="x"/>
@@ -24,7 +24,7 @@ const INTERFACE = `
     <method name="HideHoldRing"/>
     <!-- An on-screen shortcut ("express_menu", "radial_menu",
          "app_shortcuts", "keypad"), at desktop point (x, y) when has_at.
-         Fails when it cannot be shown, and tabletd opens its window. -->
+         Fails when it cannot be shown, and tabletforged opens its window. -->
     <method name="ShowMenu">
       <arg type="s" direction="in" name="name"/>
       <arg type="b" direction="in" name="has_at"/>
@@ -72,7 +72,7 @@ class HoldRing {
         this._timeline.start();
     }
 
-    // tabletd's hide: a full ring is already fading out on its own.
+    // tabletforged's hide: a full ring is already fading out on its own.
     release() {
         if (this._progress < 1)
             this.hide(100);

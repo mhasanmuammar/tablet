@@ -10,7 +10,7 @@ use crate::{mapping::Tablet, pen::Geometry};
 
 const WACOM_VENDOR: u16 = 0x056a;
 /// Marks our own uinput devices so discovery never grabs them.
-pub const VIRTUAL_SUFFIX: &str = "(tabletd)";
+pub const VIRTUAL_SUFFIX: &str = "(tabletforged)";
 
 /// First Wacom pen interface (has BTN_TOOL_PEN) that is not one of ours.
 pub fn find_pen() -> Option<Device> {

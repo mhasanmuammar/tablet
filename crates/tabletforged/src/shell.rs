@@ -1,4 +1,4 @@
-//! Feedback drawn by the Tablet Center GNOME Shell extension
+//! Feedback drawn by the TabletForge GNOME Shell extension
 //! (`gnome-extension/`), reached over D-Bus. Calls run on their own thread
 //! so the pen loop never waits on the bus; without the extension they fail
 //! quietly.
@@ -17,8 +17,8 @@ pub enum Feedback {
     Menu { name: &'static str, at: Option<(i32, i32)>, centered: bool, shown: Sender<bool> },
 }
 
-const BUS_NAME: &str = "dev.tabletcenter.Shell";
-const PATH: &str = "/dev/tabletcenter/Shell";
+const BUS_NAME: &str = "org.tabletforge.Shell";
+const PATH: &str = "/org/tabletforge/Shell";
 
 pub fn spawn() -> Sender<Feedback> {
     let (tx, rx) = mpsc::channel::<Feedback>();

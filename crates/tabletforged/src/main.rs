@@ -1,4 +1,4 @@
-//! tabletd: grabs the Wacom pen, applies Tablet Center settings and re-emits
+//! tabletforged: grabs the Wacom pen, applies TabletForge settings and re-emits
 //! the result through uinput. See `pen.rs` for the behaviour.
 
 mod devices;
@@ -73,7 +73,7 @@ struct Shared {
     /// When the pen last moved or touched, so a nudged mouse does not take
     /// the cursor from a pen in use.
     pen_active: Mutex<Option<Instant>>,
-    /// `tablet-center --shortcut-host`, which shows on-screen shortcuts.
+    /// `tabletforge --shortcut-host`, which shows on-screen shortcuts.
     shortcut_host: Mutex<Option<(Child, ChildStdin)>>,
 }
 
@@ -101,6 +101,9 @@ impl Outputs {
 }
 
 fn main() {
+    // First launch after the TabletForge rebrand: keep settings and backups
+    // by moving the directories the old install used.
+    tablet_config::migrate_legacy_paths();
     let shared = Arc::new(Shared {
         config: RwLock::new(tablet_config::load()),
         shell: Mutex::new(Some(shell::spawn())),
@@ -109,7 +112,7 @@ fn main() {
     let ipc = Arc::clone(&shared);
     thread::spawn(move || {
         if let Err(e) = serve(&ipc) {
-            eprintln!("tabletd: socket disabled: {e}");
+            eprintln!("tabletforged: socket disabled: {e}");
         }
     });
     let signals = Arc::clone(&shared);
@@ -127,7 +130,7 @@ fn main() {
     let monitors = Arc::clone(&shared);
     thread::spawn(move || {
         if let Err(e) = track_displays(&monitors) {
-            eprintln!("tabletd: monitor layout unavailable, mapping to the whole desktop: {e}");
+            eprintln!("tabletforged: monitor layout unavailable, mapping to the whole desktop: {e}");
         }
     });
 
@@ -145,7 +148,7 @@ fn main() {
                         e.to_string()
                     };
                     if message != last_error {
-                        eprintln!("tabletd: device stopped: {message}; retrying every second");
+                        eprintln!("tabletforged: device stopped: {message}; retrying every second");
                         last_error = message;
                     }
                 } else {
@@ -154,7 +157,7 @@ fn main() {
                 *shared.device.lock().unwrap() = None;
             }
             None if !waiting_logged => {
-                eprintln!("tabletd: waiting for a Wacom pen…");
+                eprintln!("tabletforged: waiting for a Wacom pen…");
                 waiting_logged = true;
             }
             None => {}
@@ -199,7 +202,7 @@ fn wait_for_shell() {
         thread::sleep(Duration::from_millis(250));
     };
     if let Some(left) = process_age(pid).and_then(|age| SHELL_SETTLE.checked_sub(age)) {
-        eprintln!("tabletd: GNOME Shell is starting; taking the pen in {}s", left.as_secs().max(1));
+        eprintln!("tabletforged: GNOME Shell is starting; taking the pen in {}s", left.as_secs().max(1));
         thread::sleep(left);
     }
 }
@@ -250,7 +253,7 @@ fn run(mut pen: evdev::Device, shared: &Shared) -> io::Result<()> {
 fn take_over(pen: &mut evdev::Device) -> io::Result<()> {
     loop {
         if devices::in_proximity(pen)? {
-            eprintln!("tabletd: pen is over the tablet; taking over once it moves away");
+            eprintln!("tabletforged: pen is over the tablet; taking over once it moves away");
             while devices::in_proximity(pen)? {
                 pen.fetch_events()?.for_each(drop);
             }
@@ -273,7 +276,7 @@ fn pump(
 ) -> io::Result<()> {
     let info = info.clone();
     *shared.tablet.lock().unwrap() = Some(tablet);
-    eprintln!("tabletd: using {} ({:04x}:{:04x})", info.name, info.vendor, info.product);
+    eprintln!("tabletforged: using {} ({:04x}:{:04x})", info.name, info.vendor, info.product);
     *shared.device.lock().unwrap() = Some(info);
 
     let mut generation = shared.generation.load(Ordering::Acquire);
@@ -511,7 +514,7 @@ fn hold_ring(shared: &Shared, show: bool, wait: Duration) {
 }
 
 /// How long to wait for the GNOME Shell extension before falling back to
-/// the Tablet Center window.
+/// the TabletForge window.
 const SHELL_MENU_WAIT: Duration = Duration::from_millis(150);
 
 /// Asks the GNOME Shell extension to draw the menu; false if it did not.
@@ -584,14 +587,14 @@ fn show_shortcut(shared: &Shared, shortcut: Shortcut, centered: bool) {
 }
 
 fn spawn_shortcut_host() -> Option<(Child, ChildStdin)> {
-    let spawned = Command::new(tablet_center()).arg("--shortcut-host").stdin(Stdio::piped()).spawn();
+    let spawned = Command::new(tabletforge_app()).arg("--shortcut-host").stdin(Stdio::piped()).spawn();
     match spawned {
         Ok(mut child) => {
             let stdin = child.stdin.take()?;
             Some((child, stdin))
         }
         Err(e) => {
-            eprintln!("tabletd: cannot start the on-screen shortcuts: {e}");
+            eprintln!("tabletforged: cannot start the on-screen shortcuts: {e}");
             None
         }
     }
@@ -612,13 +615,13 @@ fn prepare_shortcuts(shared: &Shared) {
     }
 }
 
-/// The installed app, unless `TABLET_CENTER` points at another build.
-fn tablet_center() -> PathBuf {
-    if let Some(path) = std::env::var_os("TABLET_CENTER") {
+/// The installed app, unless `TABLETFORGE` points at another build.
+fn tabletforge_app() -> PathBuf {
+    if let Some(path) = std::env::var_os("TABLETFORGE") {
         return path.into();
     }
-    let installed = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default().join(".local/bin/tablet-center");
-    if installed.exists() { installed } else { "tablet-center".into() }
+    let installed = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default().join(".local/bin/tabletforge");
+    if installed.exists() { installed } else { "tabletforge".into() }
 }
 
 /// Runs an action picked from an on-screen shortcut.
@@ -808,7 +811,7 @@ fn pad_loop(shared: &Shared) {
         if let Some(pad) = devices::find_pad() {
             match run_pad(pad, shared) {
                 Err(e) if e.to_string() != last_error => {
-                    eprintln!("tabletd: ExpressKeys stopped: {e}; retrying every second");
+                    eprintln!("tabletforged: ExpressKeys stopped: {e}; retrying every second");
                     last_error = e.to_string();
                 }
                 _ => {}
@@ -821,7 +824,7 @@ fn pad_loop(shared: &Shared) {
 fn run_pad(mut pad: evdev::Device, shared: &Shared) -> io::Result<()> {
     pad.grab()?;
     *shared.keyboard.lock().unwrap() = Some(devices::virtual_keyboard()?);
-    eprintln!("tabletd: using {}", pad.name().unwrap_or("tablet pad"));
+    eprintln!("tabletforged: using {}", pad.name().unwrap_or("tablet pad"));
     let mut generation = shared.generation.load(Ordering::Acquire);
     let mut processor = pad::PadProcessor::new(shared.config.read().unwrap().express_keys.clone());
     let mut frame = Vec::new();
@@ -919,11 +922,11 @@ fn track_displays(shared: &Shared) -> zbus::Result<()> {
 
 fn shutdown_on_signal(shared: &Shared) {
     let Ok(mut signals) = Signals::new([SIGINT, SIGTERM, SIGHUP]) else {
-        eprintln!("tabletd: cannot install signal handlers");
+        eprintln!("tabletforged: cannot install signal handlers");
         return;
     };
     if signals.forever().next().is_some() {
-        eprintln!("tabletd: shutting down");
+        eprintln!("tabletforged: shutting down");
         if let Some(mut keyboard) = shared.keyboard.lock().unwrap().take() {
             // Let go of any shortcut whose ExpressKey is still held.
             let modifiers = [

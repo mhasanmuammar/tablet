@@ -1,4 +1,4 @@
-// On-screen shortcut window, kept hidden by `tablet-center --shortcut-host`
+// On-screen shortcut window, kept hidden by `tabletforge --shortcut-host`
 // and shown by it with showShortcut({ name, at, monitor, centered }): `at`
 // is the pen inside its monitor and `monitor` that monitor's size, or both
 // null; the menu is centred then, and when `centered` (ExpressKeys).

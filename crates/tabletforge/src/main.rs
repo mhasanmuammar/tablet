@@ -1,5 +1,5 @@
-//! Tablet Center: settings UI. The tablet itself is driven by
-//! `tabletd`; this app edits the shared config and asks the daemon to reload.
+//! TabletForge: settings UI. The tablet itself is driven by
+//! `tabletforged`; this app edits the shared config and asks the daemon to reload.
 
 use std::{
     fs,
@@ -19,7 +19,7 @@ use tablet_config::{Config, KeyAction, Request, Response};
 // which Tauri runs off the main thread, so a slow answer never freezes the
 // window.
 
-/// One connection to tabletd, kept open: the UI asks for the status up to 25
+/// One connection to tabletforged, kept open: the UI asks for the status up to 25
 /// times a second, and each new connection costs the daemon a thread.
 static DAEMON: Mutex<Option<BufReader<UnixStream>>> = Mutex::new(None);
 
@@ -29,7 +29,7 @@ fn ask(request: &Request) -> Result<Response, String> {
     for _ in 0..2 {
         if daemon.is_none() {
             let stream = UnixStream::connect(tablet_config::socket_path())
-                .map_err(|_| "tabletd is not running".to_string())?;
+                .map_err(|_| "tabletforged is not running".to_string())?;
             stream.set_read_timeout(Some(Duration::from_millis(500))).map_err(|e| e.to_string())?;
             *daemon = Some(BufReader::new(stream));
         }
@@ -38,7 +38,7 @@ fn ask(request: &Request) -> Result<Response, String> {
             Err(_) => *daemon = None,
         }
     }
-    Err("tabletd is not responding".into())
+    Err("tabletforged is not responding".into())
 }
 
 fn exchange(conn: &mut BufReader<UnixStream>, request: &Request) -> io::Result<Response> {
@@ -82,7 +82,7 @@ fn status() -> Response {
 fn restart_daemon() -> Result<(), String> {
     // systemctl does not exist inside the Flatpak sandbox; host_cmd routes
     // through flatpak-spawn --host there.
-    host_cmd("systemctl", &["--user", "restart", "tabletd.service"])
+    host_cmd("systemctl", &["--user", "restart", "tabletforged.service"])
 }
 
 fn home() -> Result<PathBuf, String> {
@@ -90,7 +90,7 @@ fn home() -> Result<PathBuf, String> {
 }
 
 fn autostart_path() -> Result<PathBuf, String> {
-    Ok(home()?.join(".config/autostart/tablet-center.desktop"))
+    Ok(home()?.join(".config/autostart/tabletforge.desktop"))
 }
 
 #[tauri::command(async)]
@@ -103,10 +103,10 @@ fn set_autostart(enabled: bool) -> Result<(), String> {
     let path = autostart_path()?;
     if enabled {
         fs::create_dir_all(path.parent().unwrap()).map_err(|e| e.to_string())?;
-        let binary = home()?.join(".local/bin/tablet-center");
+        let binary = home()?.join(".local/bin/tabletforge");
         let binary = binary.to_string_lossy().replace('\\', "\\\\").replace('"', "\\\"")
             .replace('`', "\\`").replace('$', "\\$").replace('%', "%%");
-        fs::write(path, format!("[Desktop Entry]\nType=Application\nName=Tablet Center\nExec=\"{binary}\"\nIcon=tablet-center\nX-GNOME-Autostart-enabled=true\n"))
+        fs::write(path, format!("[Desktop Entry]\nType=Application\nName=TabletForge\nExec=\"{binary}\"\nIcon=tabletforge\nX-GNOME-Autostart-enabled=true\n"))
             .map_err(|e| e.to_string())
     } else {
         match fs::remove_file(path) {
@@ -118,7 +118,7 @@ fn set_autostart(enabled: bool) -> Result<(), String> {
 }
 
 fn backups_dir() -> Result<PathBuf, String> {
-    Ok(home()?.join(".config/tablet-center/backups"))
+    Ok(home()?.join(".config/tabletforge/backups"))
 }
 
 fn backup_path(filename: &str) -> Result<PathBuf, String> {
@@ -238,7 +238,7 @@ fn hide_shortcut(window: &tauri::WebviewWindow) {
     let _ = window.hide();
 }
 
-/// A request from tabletd: one JSON line on stdin per button press.
+/// A request from tabletforged: one JSON line on stdin per button press.
 #[derive(serde::Deserialize)]
 struct ShowRequest {
     name: String,
@@ -247,7 +247,7 @@ struct ShowRequest {
     centered: bool,
 }
 
-/// `tablet-center --shortcut-host`: started once by tabletd and kept running,
+/// `tabletforge --shortcut-host`: started once by tabletforged and kept running,
 /// so on-screen shortcuts open at once instead of after the half second a
 /// new WebKit app takes. The window is created hidden and reused.
 fn shortcut_host(app: &tauri::App) -> tauri::Result<()> {
@@ -259,11 +259,11 @@ fn shortcut_host(app: &tauri::App) -> tauri::Result<()> {
             let app = handle.clone();
             let _ = handle.run_on_main_thread(move || {
                 if let Err(e) = show_shortcut(&app, &request) {
-                    eprintln!("tablet-center: cannot show {}: {e}", request.name);
+                    eprintln!("tabletforge: cannot show {}: {e}", request.name);
                 }
             });
         }
-        // tabletd went away.
+        // tabletforged went away.
         handle.exit(0);
     });
     Ok(())
@@ -277,7 +277,7 @@ fn shortcut_window(app: &tauri::AppHandle) -> tauri::Result<tauri::WebviewWindow
         return Ok(window);
     }
     WebviewWindowBuilder::new(app, "shortcut", WebviewUrl::App("shortcut.html".into()))
-        .title("Tablet Center")
+        .title("TabletForge")
         .decorations(false)
         .transparent(true)
         .background_color(tauri::window::Color(0, 0, 0, 0))
@@ -290,7 +290,7 @@ fn shortcut_window(app: &tauri::AppHandle) -> tauri::Result<tauri::WebviewWindow
 }
 
 /// Shows the menu under the pen, or hides it when the same button is
-/// pressed again. tabletd moves the mouse pointer under the pen first, and
+/// pressed again. tabletforged moves the mouse pointer under the pen first, and
 /// mutter maps the window on the pointer's monitor.
 fn show_shortcut(app: &tauri::AppHandle, request: &ShowRequest) -> tauri::Result<()> {
     let window = shortcut_window(app)?;
@@ -380,7 +380,7 @@ fn host_output(program: &str, args: &[&str]) -> Result<String, String> {
 /// the host in Flatpak) and removed afterwards. All privileged steps should
 /// go into one script so there is a single authentication dialog.
 fn host_privileged(script: &str) -> Result<(), String> {
-    let dir = home()?.join(".local/share/tablet-center");
+    let dir = home()?.join(".local/share/tabletforge");
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let path = dir.join("host-setup.sh");
     fs::write(&path, script).map_err(|e| e.to_string())?;
@@ -433,15 +433,15 @@ fn emit_setup_log(app: &tauri::AppHandle, kind: &str, text: &str) {
 }
 
 fn ext_dir() -> PathBuf {
-    home().unwrap_or_default().join(".local/share/gnome-shell/extensions/tablet-center@tabletcenter.dev")
+    home().unwrap_or_default().join(".local/share/gnome-shell/extensions/tabletforge@tabletforge.org")
 }
 
 fn service_path() -> PathBuf {
-    home().unwrap_or_default().join(".config/systemd/user/tabletd.service")
+    home().unwrap_or_default().join(".config/systemd/user/tabletforged.service")
 }
 
 fn udev_rule_path() -> PathBuf {
-    PathBuf::from("/etc/udev/rules.d/70-tablet-center.rules")
+    PathBuf::from("/etc/udev/rules.d/70-tabletforge.rules")
 }
 
 /// Where the bundled udev rule file lives. Looks near the current
@@ -451,10 +451,10 @@ fn udev_rule_path() -> PathBuf {
 fn udev_rule_source() -> Option<PathBuf> {
     // Native builds: the packaging directory in a checkout (dev runs), or the
     // install prefix share directory for layout variants of package.sh.
-    let mut candidates = vec![PathBuf::from("packaging/70-tablet-center.rules")];
+    let mut candidates = vec![PathBuf::from("packaging/70-tabletforge.rules")];
     if let Ok(exe) = std::env::current_exe() {
         if let Some(prefix) = exe.parent().and_then(|d| d.parent()) {
-            candidates.push(prefix.join("share/udev/rules.d/70-tablet-center.rules"));
+            candidates.push(prefix.join("share/udev/rules.d/70-tabletforge.rules"));
         }
     }
     candidates.into_iter().find(|p| p.is_file())
@@ -495,7 +495,7 @@ fn udev_rule_matches_host() -> bool {
     let Some(src) = udev_rule_source() else {
         return false;
     };
-    let staged = match stage_host_file(&src, "70-tablet-center.rules") {
+    let staged = match stage_host_file(&src, "70-tabletforge.rules") {
         Ok(p) => p,
         Err(_) => return false,
     };
@@ -506,10 +506,10 @@ fn udev_rule_matches_host() -> bool {
     .is_ok()
 }
 
-/// Copies a file into ~/.local/share/tablet-center, where the host can read
+/// Copies a file into ~/.local/share/tabletforge, where the host can read
 /// it (xdg-data is shared with the host in Flatpak).
 fn stage_host_file(src: &std::path::Path, name: &str) -> Result<PathBuf, String> {
-    let dir = home()?.join(".local/share/tablet-center");
+    let dir = home()?.join(".local/share/tabletforge");
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let dst = dir.join(name);
     // Remove first: copying over a running daemon fails (ETXTBSY).
@@ -523,8 +523,10 @@ fn stage_host_file(src: &std::path::Path, name: &str) -> Result<PathBuf, String>
 /// where paths like /app exist only for the Flatpak sandbox, not for it).
 fn host_setup_script(rule_path: Option<&std::path::Path>) -> String {
     let mut script = String::from(
-        "#!/bin/sh\n# Tablet Center host setup, run as root via\n# pkexec (polkit authentication).\nset -e\nRULE=/etc/udev/rules.d/70-tablet-center.rules\n",
+        "#!/bin/sh\n# TabletForge host setup, run as root via\n# pkexec (polkit authentication).\nset -e\nRULE=/etc/udev/rules.d/70-tabletforge.rules\n",
     );
+    // The two-branch rule file name was installed by the pre-rebrand build.
+    script.push_str("rm -f /etc/udev/rules.d/70-tablet-center.rules\n");
     if let Some(src) = rule_path {
         let quoted = src.to_string_lossy().replace('\'', "'\\''");
         script.push_str(&format!("install -m 644 '{quoted}' \"$RULE\"\n"));
@@ -544,7 +546,7 @@ fn host_setup_script(rule_path: Option<&std::path::Path>) -> String {
 fn check_host_integration() -> HostIntegrationStatus {
     let extension_installed = ext_dir().join("extension.js").is_file();
     let service_installed = service_path().is_file();
-    let service_running = host_output("systemctl", &["--user", "is-active", "tabletd.service"])
+    let service_running = host_output("systemctl", &["--user", "is-active", "tabletforged.service"])
         .map(|s| s.trim() == "active")
         .unwrap_or(false);
     let udev_rule_installed = udev_rule_installed_on_host();
@@ -571,10 +573,10 @@ fn install_host_integration(app: tauri::AppHandle) -> Result<(), String> {
     // Install GNOME Shell extension from bundled resources.
     // In Flatpak, resources are under /app; native builds use the install dir.
     let ext_src = if is_flatpak() {
-        PathBuf::from("/app/share/gnome-shell/extensions/tablet-center@tabletcenter.dev")
+        PathBuf::from("/app/share/gnome-shell/extensions/tabletforge@tabletforge.org")
     } else {
         // Find extension relative to the binary or use a known path.
-        PathBuf::from("gnome-extension/tablet-center@tabletcenter.dev")
+        PathBuf::from("gnome-extension/tabletforge@tabletforge.org")
     };
     if ext_src.is_dir() {
         log("step", "Copying the GNOME Shell extension to the host…");
@@ -589,6 +591,12 @@ fn install_host_integration(app: tauri::AppHandle) -> Result<(), String> {
         log("ok", "GNOME Shell extension installed.");
     }
 
+    // Remove components an install before the TabletForge rebrand left
+    // behind (legacy extension id, legacy systemd unit name); best effort.
+    let _ = host_cmd("systemctl", &["--user", "disable", "--now", "tabletd.service"]);
+    let _ = fs::remove_file(home_dir.join(".config/systemd/user/tabletd.service"));
+    let _ = fs::remove_dir_all(home_dir.join(".local/share/gnome-shell/extensions/tablet-center@tabletcenter.dev"));
+
     // Install systemd service.
     if let Some(parent) = svc.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
@@ -597,10 +605,10 @@ fn install_host_integration(app: tauri::AppHandle) -> Result<(), String> {
     // yet, so copy it from /app/bin into the host-visible helper directory
     // (~/.local/share is shared with the host's filesystem) and point
     // systemd there. Native installs can rely on install.sh having placed
-    // tabletd in ~/.local/bin.
+    // tabletforged in ~/.local/bin.
     let daemon_bin = if is_flatpak() {
         log("step", "Staging the daemon binary for the host…");
-        let dst = stage_host_file(std::path::Path::new("/app/bin/tabletd"), "tabletd")
+        let dst = stage_host_file(std::path::Path::new("/app/bin/tabletforged"), "tabletforged")
             .map_err(|e| format!("Could not stage the daemon for the host: {e}"))?;
         #[cfg(unix)]
         {
@@ -610,10 +618,10 @@ fn install_host_integration(app: tauri::AppHandle) -> Result<(), String> {
         log("ok", "Daemon staged.");
         dst
     } else {
-        home_dir.join(".local/bin/tabletd")
+        home_dir.join(".local/bin/tabletforged")
     };
     let service_content = format!(
-        "[Unit]\nDescription=Tablet Center daemon\nAfter=graphical-session.target\n\n[Service]\nType=simple\nExecStart={}\nRestart=on-failure\n\n[Install]\nWantedBy=graphical-session.target\n",
+        "[Unit]\nDescription=TabletForge daemon\nAfter=graphical-session.target\n\n[Service]\nType=simple\nExecStart={}\nRestart=on-failure\n\n[Install]\nWantedBy=graphical-session.target\n",
         daemon_bin.display()
     );
     fs::write(&svc, service_content).map_err(|e| e.to_string())?;
@@ -628,7 +636,7 @@ fn install_host_integration(app: tauri::AppHandle) -> Result<(), String> {
     let staged_rule = match udev_rule_source() {
         Some(src) => {
             log("step", "Staging the udev rule…");
-            let dst = stage_host_file(&src, "70-tablet-center.rules")
+            let dst = stage_host_file(&src, "70-tabletforge.rules")
                 .map_err(|e| format!("Could not stage the udev rule: {e}"))?;
             if rule_installed
                 && host_cmd(
@@ -658,19 +666,19 @@ fn install_host_integration(app: tauri::AppHandle) -> Result<(), String> {
     // Start the daemon AFTER the privileged steps: its fresh process then
     // sees the new udev ACLs (and the input group if the manager has been
     // restarted meanwhile).
-    log("step", "Starting the tabletd service…");
+    log("step", "Starting the tabletforged service…");
     host_cmd("systemctl", &["--user", "daemon-reload"])?;
-    host_cmd("systemctl", &["--user", "enable", "tabletd.service"])?;
-    let _ = host_cmd("systemctl", &["--user", "restart", "tabletd.service"]);
-    match host_output("systemctl", &["--user", "is-active", "tabletd.service"]) {
-        Ok(s) if s.trim() == "active" => log("ok", "The tabletd service is running."),
-        Ok(_) => log("err", "The tabletd service did not start — check the status list below (a logout may help)."),
+    host_cmd("systemctl", &["--user", "enable", "tabletforged.service"])?;
+    let _ = host_cmd("systemctl", &["--user", "restart", "tabletforged.service"]);
+    match host_output("systemctl", &["--user", "is-active", "tabletforged.service"]) {
+        Ok(s) if s.trim() == "active" => log("ok", "The tabletforged service is running."),
+        Ok(_) => log("err", "The tabletforged service did not start — check the status list below (a logout may help)."),
         Err(e) => log("err", &format!("Could not talk to systemd: {e}")),
     }
 
     // Enable GNOME Shell extension.
     log("step", "Enabling the GNOME Shell extension…");
-    let ext_id = "tablet-center@tabletcenter.dev";
+    let ext_id = "tabletforge@tabletforge.org";
     let enabled = host_output("gsettings", &["get", "org.gnome.shell", "enabled-extensions"]).unwrap_or_default();
     if !enabled.contains(ext_id) {
         if enabled.trim() == "@as []" {
@@ -683,7 +691,7 @@ fn install_host_integration(app: tauri::AppHandle) -> Result<(), String> {
     log("ok", "GNOME Shell extension enabled.");
 
     // Mark as checked.
-    let marker = home_dir.join(".config/tablet-center/.host-integration-checked");
+    let marker = home_dir.join(".config/tabletforge/.host-integration-checked");
     if let Some(parent) = marker.parent() {
         let _ = fs::create_dir_all(parent);
     }
@@ -702,27 +710,31 @@ fn remove_host_integration(app: tauri::AppHandle) -> Result<(), String> {
     log("step", "Stopping and removing the daemon service…");
     // Remove extension.
     let _ = fs::remove_dir_all(&ext);
+    // Also clear names the pre-rebrand build used (best effort).
+    let _ = fs::remove_dir_all(home().unwrap_or_default().join(".local/share/gnome-shell/extensions/tablet-center@tabletcenter.dev"));
 
     // Remove service.
+    let _ = host_cmd("systemctl", &["--user", "disable", "--now", "tabletforged.service"]);
     let _ = host_cmd("systemctl", &["--user", "disable", "--now", "tabletd.service"]);
     let _ = fs::remove_file(&svc);
+    let _ = fs::remove_file(home().unwrap_or_default().join(".config/systemd/user/tabletd.service"));
     let _ = host_cmd("systemctl", &["--user", "daemon-reload"]);
     // Remove the daemon staged for the host (Flatpak installs).
-    let _ = fs::remove_file(home().unwrap_or_default().join(".local/share/tablet-center/tabletd"));
+    let _ = fs::remove_file(home().unwrap_or_default().join(".local/share/tabletforge/tabletforged"));
     // Best effort: also clear service leftovers from former native installs.
-    let _ = fs::remove_file(home().unwrap_or_default().join(".local/bin/tabletd"));
+    let _ = fs::remove_file(home().unwrap_or_default().join(".local/bin/tabletforged"));
 
     // Remove udev rule (needs administrator rights; see host_privileged).
     if udev_rule_installed_on_host() {
         log("info", "Administrator rights needed to remove the udev rule — an authentication dialog will open…");
         host_privileged(
-            "#!/bin/sh\n# Tablet Center host cleanup, run as root via pkexec.\nset -e\nrm -f /etc/udev/rules.d/70-tablet-center.rules\nudevadm control --reload\nudevadm trigger --subsystem-match=misc --sysname-match=uinput || true\n",
+            "#!/bin/sh\n# TabletForge host cleanup, run as root via pkexec.\nset -e\nrm -f /etc/udev/rules.d/70-tabletforge.rules /etc/udev/rules.d/70-tablet-center.rules\nudevadm control --reload\nudevadm trigger --subsystem-match=misc --sysname-match=uinput || true\n",
         )?;
     }
     log("ok", "Host integration removed.");
 
     // Remove extension from gsettings.
-    let ext_id = "tablet-center@tabletcenter.dev";
+    let ext_id = "tabletforge@tabletforge.org";
     let enabled = host_output("gsettings", &["get", "org.gnome.shell", "enabled-extensions"]).unwrap_or_default();
     if enabled.contains(ext_id) {
         let new = enabled.replace(&format!(", '{ext_id}'"), "").replace(&format!("'{ext_id}', "), "").replace(&format!("'{ext_id}'"), "");
@@ -731,7 +743,7 @@ fn remove_host_integration(app: tauri::AppHandle) -> Result<(), String> {
     }
 
     // Remove marker.
-    let marker = home().unwrap_or_default().join(".config/tablet-center/.host-integration-checked");
+    let marker = home().unwrap_or_default().join(".config/tabletforge/.host-integration-checked");
     let _ = fs::remove_file(marker);
 
     Ok(())
@@ -739,7 +751,7 @@ fn remove_host_integration(app: tauri::AppHandle) -> Result<(), String> {
 
 #[tauri::command(async)]
 fn is_first_launch() -> bool {
-    let marker = home().unwrap_or_default().join(".config/tablet-center/.host-integration-checked");
+    let marker = home().unwrap_or_default().join(".config/tabletforge/.host-integration-checked");
     !marker.is_file()
 }
 
@@ -776,10 +788,13 @@ fn main_window(app: &tauri::App) -> tauri::Result<()> {
 
 fn main() {
     let host = std::env::args().any(|a| a == "--shortcut-host");
+    // First launch after the TabletForge rebrand: keep settings and backups
+    // by moving the directories the old install used.
+    tablet_config::migrate_legacy_paths();
     // GTK uses this as the Wayland app_id, which GNOME matches to
-    // tablet-center.desktop for the window's icon and name.
-    gtk::glib::set_prgname(Some("tablet-center"));
-    gtk::glib::set_application_name("Tablet Center");
+    // tabletforge.desktop for the window's icon and name.
+    gtk::glib::set_prgname(Some("tabletforge"));
+    gtk::glib::set_application_name("TabletForge");
     tauri::Builder::default()
         .setup(move |app| {
             if host {
@@ -794,9 +809,9 @@ fn main() {
             delete_backup, open_backups_folder, reset_config, run_shortcut_action, close_shortcut, pending_shortcut, set_ui_style,
             check_host_integration, install_host_integration, remove_host_integration, is_first_launch])
         .build(tauri::generate_context!())
-        .expect("error while running Tablet Center")
+        .expect("error while running TabletForge")
         .run(move |_, event| {
-            // The host lives on with its window hidden, until tabletd exits.
+            // The host lives on with its window hidden, until tabletforged exits.
             if let tauri::RunEvent::ExitRequested { code: None, api, .. } = event {
                 if host {
                     api.prevent_exit();

@@ -1,8 +1,8 @@
 [Desktop Entry]
 Type=Application
-Name=Tablet Center
-Exec=tablet-center
-Icon=tablet-center
+Name=TabletForge
+Exec=tabletforge
+Icon=tabletforge
 Categories=Settings;HardwareSettings;
 Terminal=false
-StartupWMClass=tablet-center
+StartupWMClass=tabletforge

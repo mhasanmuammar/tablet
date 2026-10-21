@@ -1,21 +1,20 @@
-# Tablet Center
+# TabletForge
 
-A settings app and a small daemon for Wacom pen tablets on GNOME (Wayland).
+A settings app and a small daemon for pen tablets on GNOME (Wayland).
 It adds the features the Linux driver lacks, starting with **pan scroll** as
 it works on macOS.
 
-> Unofficial project, not affiliated with or endorsed by Wacom. Wacom,
-> Intuos and ExpressKeys are trademarks of Wacom Co., Ltd., used here only
-> to say which hardware this works with.
+> Unofficial project, not affiliated with or endorsed by any tablet
+> manufacturer. Vendor names are used only to say which hardware this
+> works with.
 
 ![Pen settings](docs/screenshots/pen.png)
 
-## About this fork
+## About this project
 
-This is a fork of [`wfpaisa/tablet`](https://github.com/wfpaisa/tablet).
-Upstream builds from source only; this fork is the one shipping pre-built
-binaries for `x86_64` and `aarch64` (cross-compiled in CI) through GitHub
-releases. It also rewrites the installer to derive every path from the
+TabletForge is developed and shipped here directly: CI builds pre-built
+binaries for `x86_64` and `aarch64` (cross-compiled) and publishes them
+through GitHub releases. The installer derives every path from the
 XDG/freedesktop spec instead of hardcoding `~/.local` and `~/.config`.
 Build-from-source remains available via `scripts/package.sh` for developers
 and tinkerers.
@@ -52,13 +51,14 @@ and tinkerers.
   a ring next to the cursor while it waits.
 - **On-screen shortcuts in GNOME Shell** (Settings): the same extension can
   draw the radial menus and grid panels, so they open at once without a
-  window or focus change. Tablet Center's window remains the fallback.
+  window or focus change. TabletForge's window remains the fallback.
 - **Pen as a mouse**: optional single cursor that changes shape over text
   and borders, for when you don't need pressure.
 - **14 languages**, English by default.
 
-Tested with an Intuos S (CTL-4100). Other Wacom pens should work; the UI
-artwork currently covers the Intuos S only.
+Tested with an Intuos S (CTL-4100). Other pen tablets that ship a standard
+evdev tablet interface should work; the UI artwork currently covers the
+Intuos S only.
 
 ## Install
 
@@ -72,13 +72,13 @@ curl -fsSL https://github.com/mhasanmuammar/tablet/releases/latest/download/inst
 
 The bootstrap downloads `install.sh` plus its packaging, detects your
 architecture (`uname -m`), fetches the matching pre-built binary archive
-(`tablet-center-x86_64-linux.tar.gz` or `tablet-center-aarch64-linux.tar.gz`)
+(`tabletforge-x86_64-linux.tar.gz` or `tabletforge-aarch64-linux.tar.gz`)
 from this fork's release, and lays everything out under standard XDG
 directories — no host Rust toolchain needed.
 
 The installer may ask for your password once, to install WebKitGTK if it is
 missing and to give your user access to the tablet. When it finishes,
-**log out and back in**, then open **Tablet Center** from the app grid.
+**log out and back in**, then open **TabletForge** from the app grid.
 If the tablet does nothing after that, restart the computer.
 
 ### Download by hand
@@ -89,19 +89,19 @@ extract it, and run `./install.sh` inside the extracted folder.
 
 ### Flatpak bundle (.flatpak)
 
-You can install the standalone Flatpak bundle `com.tabletcenter.TabletCenter.flatpak` available in the [latest release](https://github.com/mhasanmuammar/tablet/releases/latest).
+You can install the standalone Flatpak bundle `org.tabletforge.TabletForge.flatpak` available in the [latest release](https://github.com/mhasanmuammar/tablet/releases/latest).
 
 To install:
 ```sh
-flatpak install --user com.tabletcenter.TabletCenter.flatpak
+flatpak install --user org.tabletforge.TabletForge.flatpak
 ```
 
 To run:
 ```sh
-flatpak run com.tabletcenter.TabletCenter
+flatpak run org.tabletforge.TabletForge
 ```
 
-> **Host integration:** When launched inside Flatpak, Tablet Center includes a host integration helper that sets up the GNOME Shell extension, systemd user service for `tabletd`, and udev permissions on your host.
+> **Host integration:** When launched inside Flatpak, TabletForge includes a host integration helper that sets up the GNOME Shell extension, systemd user service for `tabletforged`, and udev permissions on your host.
 
 ### Uninstall
 
@@ -118,7 +118,7 @@ the pre-built install above.
 Install Rust (stable) and the
 [Tauri 2 Linux prerequisites](https://v2.tauri.app/start/prerequisites/#linux),
 then run `install.sh` from a checkout. It uses
-`dist/tablet-center-<arch>-linux.tar.gz` when present, otherwise downloads
+`dist/tabletforge-<arch>-linux.tar.gz` when present, otherwise downloads
 the matching pre-built archive from GitHub:
 
 ```sh
@@ -132,7 +132,7 @@ scripts/package.sh              # x86_64 native build
 scripts/package.sh aarch64      # cross-compile for aarch64
 ```
 
-The archive lands in `dist/tablet-center-<arch>-linux.tar.gz`.
+The archive lands in `dist/tabletforge-<arch>-linux.tar.gz`.
 
 ### Container build
 
@@ -148,8 +148,8 @@ scripts/container.sh release    # build + package the release archive
 scripts/container.sh shell     # interactive shell in the image
 ```
 
-The release archive lands in `dist/tablet-center-<arch>-linux.tar.gz`. The
-image also ships a small runtime stage (`tablet-center:final`) with the
+The release archive lands in `dist/tabletforge-<arch>-linux.tar.gz`. The
+image also ships a small runtime stage (`tabletforge:final`) with the
 binaries and their shared libraries under `/output/bin/`, plus the archive in
 `/output/`.
 
@@ -159,10 +159,10 @@ To build the Flatpak application and create a standalone `.flatpak` bundle local
 
 ```sh
 # Build and export to a local repository
-flatpak-builder --user --install-deps-from=flathub --force-clean --repo=repo build-dir packaging/flatpak/com.tabletcenter.TabletCenter.yml
+flatpak-builder --user --install-deps-from=flathub --force-clean --repo=repo build-dir packaging/flatpak/org.tabletforge.TabletForge.yml
 
 # Create single-file bundle
-flatpak build-bundle --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo repo com.tabletcenter.TabletCenter.flatpak com.tabletcenter.TabletCenter stable
+flatpak build-bundle --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo repo org.tabletforge.TabletForge.flatpak org.tabletforge.TabletForge stable
 ```
 
 ## Guide
@@ -178,14 +178,14 @@ Install Rust (stable) and the Tauri 2 Linux prerequisites, then:
 ### Check status
 
 ```sh
-systemctl --user status tabletd
+systemctl --user status tabletforged
 ```
 
 ### Develop
 
 ```sh
 ./dev.sh            # UI only; talks to the installed service
-./dev.sh --daemon   # also runs a local tabletd build if the service is stopped
+./dev.sh --daemon   # also runs a local tabletforged build if the service is stopped
 cargo test
 ```
 
@@ -204,7 +204,7 @@ Ctrl+R without rebuilding.
   are shipped. riscv64 (and other) owners build from source with
   `scripts/package.sh`.
 
-**Careful when changing `tabletd`.** gnome-shell (Mutter 51) crashes if a
+**Careful when changing `tabletforged`.** gnome-shell (Mutter 51) crashes if a
 virtual tablet disappears, or the tablet changes owner, while the pen is in
 proximity, and that ends your session. The daemon avoids this by releasing
 everything before removing its devices, grabbing the tablet only while the pen
@@ -213,12 +213,12 @@ you change it, and stop the daemon with SIGTERM, never SIGKILL.
 
 ## Details
 
-The installer puts everything under your home folder: `tabletd` as a
-systemd user service that starts with your session, the Tablet Center app
+The installer puts everything under your home folder: `tabletforged` as a
+systemd user service that starts with your session, the TabletForge app
 in the app grid, and its GNOME Shell extension. Only the system part needs
 your password: WebKitGTK 4.1 when it is missing, a udev rule for
 `/dev/uinput`, and membership in the `input` group. Check the service with
-`systemctl --user status tabletd`.
+`systemctl --user status tabletforged`.
 
 GNOME is required because the daemon reads the monitor layout from Mutter;
 other desktops are not supported (contributions welcome).
@@ -226,21 +226,41 @@ other desktops are not supported (contributions welcome).
 ## How it works
 
 ```
-tablet ──> tabletd ──> virtual pen, pointer and keyboard (uinput) ──> GNOME
+tablet ──> tabletforged ──> virtual pen, pointer and keyboard (uinput) ──> GNOME
               ^
-              └── settings + live status (Unix socket) ── Tablet Center (Tauri)
+              └── settings + live status (Unix socket) ── TabletForge (Tauri)
 ```
 
-- **`tabletd`** (`crates/tabletd`) takes exclusive control of the tablet,
+- **`tabletforged`** (`crates/tabletforged`) takes exclusive control of the tablet,
   applies your settings and re-emits the result through virtual devices.
   Scrolling and clicks go through a separate absolute pointer, because GNOME
   gives a tablet tool its own cursor.
-- **Tablet Center** (`crates/tablet-center`, `ui`) is a Tauri app with
+- **TabletForge** (`crates/tabletforge`, `ui`) is a Tauri app with
   a plain HTML/CSS/JS front end. It writes
-  `~/.config/tablet-center/config.json` and tells the daemon to reload over
-  `$XDG_RUNTIME_DIR/tabletd.sock`.
+  `~/.config/tabletforge/config.json` and tells the daemon to reload over
+  `$XDG_RUNTIME_DIR/tabletforged.sock`.
 - **`tablet-config`** (`crates/tablet-config`) holds the settings and the
   socket protocol shared by both.
+
+## Roadmap / TODO
+
+This fork's next phase is simplification — trimming the product down to
+what tablet users actually touch. The step-by-step procedure lives in
+[docs/PLAN.md](docs/PLAN.md).
+
+- **Simplify the UX.** Fewer screens and choices; the settings people
+  change most (pen buttons, tip feel, scroll, mapping) become the primary
+  flow, and everything else is demoted or dropped.
+- **Deprecate unnecessary stuff.** Features and modes that pulled their
+  weight upstream but don't here get removed instead of maintained.
+- **Standard GNOME settings storage.** Move away from the hand-rolled JSON
+  config to [GSettings](https://docs.gtk.org/gio/struct.Settings.html)
+  (dconf) with a proper schema — the standard for GNOME system apps — and
+  keep data files (backups, shell menus) under the standard XDG data dirs.
+- **Port the UI to Adwaita widgets.** Rebuild the front end on
+  [libadwaita](https://gnome.pages.gitlab.gnome.org/libadwaita/) instead of
+  the hand-rolled HTML/CSS stack, so the app matches GNOME's design
+  language out of the box.
 
 ## Credits
 

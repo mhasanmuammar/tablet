@@ -136,7 +136,7 @@ function glassSettings() {
   return (
     glassSection(
       "General settings",
-      `<div class="setting-row"><div><h3>${gt("Driver service")}</h3><p id="driver-state"></p></div>${gb("Restart Driver", "data-restart")}</div><div class="setting-row"><label for="language">${gt("Language")}</label><select id="language">${LANGUAGES.map(([code, label]) => `<option value="${code}" ${language() === code ? "selected" : ""}>${esc(label)}</option>`).join("")}</select></div><div class="setting-row"><label for="ui-style">${gt("Interface")}</label>${uiStyleSelect()}</div>${glassSwitch("Tablet Center autostart", "autostart", false)}<label class="switch-row"><span>${gt("On-screen shortcuts in GNOME Shell")}</span><input role="switch" type="checkbox" id="in-shell" ${config.shortcuts?.in_shell ? "checked" : ""}><span class="switch-track"></span></label><p class="hint">${gt(SHELL_MENUS_HINT)}</p>`,
+      `<div class="setting-row"><div><h3>${gt("Driver service")}</h3><p id="driver-state"></p></div>${gb("Restart Driver", "data-restart")}</div><div class="setting-row"><label for="language">${gt("Language")}</label><select id="language">${LANGUAGES.map(([code, label]) => `<option value="${code}" ${language() === code ? "selected" : ""}>${esc(label)}</option>`).join("")}</select></div><div class="setting-row"><label for="ui-style">${gt("Interface")}</label>${uiStyleSelect()}</div>${glassSwitch("TabletForge autostart", "autostart", false)}<label class="switch-row"><span>${gt("On-screen shortcuts in GNOME Shell")}</span><input role="switch" type="checkbox" id="in-shell" ${config.shortcuts?.in_shell ? "checked" : ""}><span class="switch-track"></span></label><p class="hint">${gt(SHELL_MENUS_HINT)}</p>`,
     ) +
     glassSection(
       "Backup & restore",
@@ -584,7 +584,7 @@ function glassSearch() {
     ...Object.entries(ON_SCREEN).map(([route, p]) => [`shortcuts/${route}`, p.title]),
     ...["Tip sensitivity", "Use the pen as a mouse", "Tip feel"].map((s) => ["pen", s]),
     ...["Force proportions", "Display toggle", "All displays"].map((s) => ["mapping", s]),
-    ...["Language", "Interface", "Backup & restore", "Tablet Center autostart", "Restart Driver"].map((s) => [
+    ...["Language", "Interface", "Backup & restore", "TabletForge autostart", "Restart Driver"].map((s) => [
       "settings",
       s,
     ]),
@@ -629,7 +629,7 @@ async function glassInit() {
     status = { device: null, error: String(error) };
   }
   $("#glass").innerHTML =
-    `<div class="wf-window">${windowFrame()}<div class="search-wrap"><input id="glass-search" type="search" placeholder="${gt("Search settings")}" aria-label="${gt("Search settings")}"><div id="search-results" hidden></div></div><div class="app-layout"><aside><div class="device-card"><div class="mini-tablet">${glassTablet()}</div><strong id="device-name"></strong><small>${gt("Tablet Center")} · Glass</small></div><nav class="side-nav" aria-label="${gt("Settings")}">${glassNav.map(([route, label, ic]) => `<a data-route="${route}" href="#/${route}">${icon(ic)}${gt(label)}</a>`).join("")}</nav></aside><main><div id="daemon-banner" hidden><span id="daemon-message"></span>${gb("Restart Driver", "data-restart")}</div><header class="page-heading"><small>${gt("Tablet Center")}</small><h1 id="page-title"></h1></header><div id="glass-content"></div></main></div></div>`;
+    `<div class="wf-window">${windowFrame()}<div class="search-wrap"><input id="glass-search" type="search" placeholder="${gt("Search settings")}" aria-label="${gt("Search settings")}"><div id="search-results" hidden></div></div><div class="app-layout"><aside><div class="device-card"><div class="mini-tablet">${glassTablet()}</div><strong id="device-name"></strong><small>${gt("TabletForge")} · Glass</small></div><nav class="side-nav" aria-label="${gt("Settings")}">${glassNav.map(([route, label, ic]) => `<a data-route="${route}" href="#/${route}">${icon(ic)}${gt(label)}</a>`).join("")}</nav></aside><main><div id="daemon-banner" hidden><span id="daemon-message"></span>${gb("Restart Driver", "data-restart")}</div><header class="page-heading"><small>${gt("TabletForge")}</small><h1 id="page-title"></h1></header><div id="glass-content"></div></main></div></div>`;
   mountWindowFrame();
   glassSearch();
   document.addEventListener("click", (e) => {

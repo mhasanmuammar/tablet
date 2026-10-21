@@ -1,8 +1,8 @@
-//! Settings and IPC protocol shared by `tabletd` and Tablet Center.
+//! Settings and IPC protocol shared by `tabletforged` and TabletForge.
 //!
-//! Settings live in `$XDG_CONFIG_HOME/tablet-center/config.json`. The UI writes
+//! Settings live in `$XDG_CONFIG_HOME/tabletforge/config.json`. The UI writes
 //! the file and then sends [`Request::Reload`] over the daemon socket at
-//! `$XDG_RUNTIME_DIR/tabletd.sock` (one JSON object per line, each answered by
+//! `$XDG_RUNTIME_DIR/tabletforged.sock` (one JSON object per line, each answered by
 //! one [`Response`] line).
 
 use serde::{Deserialize, Serialize};
@@ -175,7 +175,7 @@ impl Gesture {
     }
 }
 
-/// On-screen shortcuts: menus Tablet Center shows where the pen is, which
+/// On-screen shortcuts: menus TabletForge shows where the pen is, which
 /// run the chosen action once the window closes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -298,13 +298,13 @@ pub struct ShortcutSettings {
     pub radial_menu: OnScreen,
     pub app_shortcuts: OnScreen,
     pub keypad: OnScreen,
-    /// Drawn by the Tablet Center GNOME Shell extension instead of a
-    /// Tablet Center window (which stays the fallback).
+    /// Drawn by the TabletForge GNOME Shell extension instead of a
+    /// TabletForge window (which stays the fallback).
     pub in_shell: bool,
 }
 
 /// Menus resolved for the GNOME Shell extension (labels translated, icon
-/// names picked), written by Tablet Center next to the settings file.
+/// names picked), written by TabletForge next to the settings file.
 pub fn shell_menus_path() -> PathBuf {
     config_path().with_file_name("shell-menus.json")
 }
@@ -435,14 +435,39 @@ pub fn config_path() -> PathBuf {
     let base = env::var_os("XDG_CONFIG_HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|| home().join(".config"));
-    base.join("tablet-center").join("config.json")
+    base.join("tabletforge").join("config.json")
 }
 
 pub fn socket_path() -> PathBuf {
     env::var_os("XDG_RUNTIME_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(env::temp_dir)
-        .join("tabletd.sock")
+        .join("tabletforged.sock")
+}
+
+/// Installs made before the rebrand lived under the old names
+/// ("tablet-center" config dir, "tablet-center" data dir, a
+/// "tablet-center" autostart shortcut). Move them once, so settings and
+/// backups survive the update.
+pub fn migrate_legacy_paths() {
+    let moves = [
+        (".config", "tablet-center", ".config", "tabletforge"),
+        (".local/share", "tablet-center", ".local/share", "tabletforge"),
+    ];
+    for (from_dir, from_leaf, to_dir, to_leaf) in moves {
+        let from = home().join(from_dir).join(from_leaf);
+        let to = home().join(to_dir).join(to_leaf);
+        if from.is_dir() && !to.exists() {
+            let parent = to.parent().unwrap_or(&to);
+            let _ = fs::create_dir_all(parent).and_then(|_| fs::rename(&from, &to));
+        }
+    }
+    // The autostart entry carries the old product name inside its filename.
+    let old_autostart = home().join(".config/autostart/tablet-center.desktop");
+    let new_autostart = home().join(".config/autostart/tabletforge.desktop");
+    if old_autostart.is_file() && !new_autostart.is_file() {
+        let _ = fs::rename(&old_autostart, &new_autostart);
+    }
 }
 
 fn home() -> PathBuf {

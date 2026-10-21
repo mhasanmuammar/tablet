@@ -1,7 +1,7 @@
 //! Turns one evdev frame from the physical pen into frames for the virtual pen
 //! and the virtual mouse. No I/O here, so the behaviour is unit-testable.
 //!
-//! Pan/Scroll (observed on macOS Tablet Center): while the button is held the
+//! Pan/Scroll (observed on macOS TabletForge): while the button is held the
 //! cursor stays put; touching the tip and dragging scrolls in any direction,
 //! proportional to pen travel; letting go stops immediately (no momentum).
 //!

@@ -1,5 +1,5 @@
-// Tablet Center — UI. Talks to the Rust side through Tauri commands;
-// the tablet is driven by tabletd.
+// TabletForge — UI. Talks to the Rust side through Tauri commands;
+// the tablet is driven by tabletforged.
 
 const invoke = window.__TAURI__?.core?.invoke ?? (async (cmd) => {
   // Lets the page render in a plain browser while designing.
@@ -87,7 +87,7 @@ const EXTRA_EN = {
   "Right · hold Middle": "Right click / hold for middle click",
   "Force proportions": "Keep proportions",
   "Default": "Restore defaults",
-  "Tablet Center autostart": "Start Tablet Center when you sign in",
+  "TabletForge autostart": "Start TabletForge when you sign in",
   "One cursor that changes over text and borders, like the mouse. The tip clicks; drawing apps get no pressure.": "Use the pen to move the mouse pointer and tap the tip to click. Pressure sensitivity is disabled in drawing apps.",
   "How long to hold the button before it becomes a middle click. Moving the pen while holding it starts the middle click at once.": "Choose how long to hold the button for a middle click. Moving the pen while holding the button also starts a middle click.",
   "Radial menus open around the pen, so reaching an action takes a short flick.": "Radial menus arrange actions around the cursor. Click an action to use it.",
@@ -100,7 +100,7 @@ const EXTRA_EN = {
   "Hold the button and touch the tablet: the farther you move the pen, the faster it scrolls, even when the pen rests.": "Hold the button and touch the tablet with the tip. Move away from that starting point to scroll. The farther you move, the faster it scrolls. Scrolling continues even when you stop moving the pen.",
   "Works like a mouse wheel: the farther you move the pen, the faster it turns.": "Scroll as you would with a mouse wheel. Move the pen farther from the starting point to scroll faster.",
   "Display toggle cycles your cursor between multiple screens and is only available for multi-screen setups.": "Switch the pen between individual screens and all screens. This requires at least two screens.",
-  "Radial menus and grid panels are drawn by the Tablet Center GNOME Shell extension: they open at once and never take the focus. Without the extension they open in a window as before.": "Requires the Tablet Center GNOME Shell extension. Menus open without switching away from your app. Without the extension, menus open in a separate window.",
+  "Radial menus and grid panels are drawn by the TabletForge GNOME Shell extension: they open at once and never take the focus. Without the extension they open in a window as before.": "Requires the TabletForge GNOME Shell extension. Menus open without switching away from your app. Without the extension, menus open in a separate window.",
   "To prevent this, select \"Force proportions\" to use only a proportional area of the pen display. This may leave a portion of your pen display inactive, but ensures proportional pen movement.": "Match the tablet area to the screen proportions so pen movements keep the same shape on screen. Part of the tablet area may be unused."
 };
 
@@ -141,7 +141,7 @@ const LANGUAGES = [
 
 // Interface styles: each is its own page built on this file's helpers.
 // The last field: draws its own title bar (no system frame). Keep in step
-// with UI_STYLES in tablet-center's main.rs.
+// with UI_STYLES in tabletforge's main.rs.
 const UI_STYLES = [
   ["classic", "Tablet", "index.html", false],
   ["glass", "Glass", "glass.html", true],
@@ -175,7 +175,7 @@ const appWindow = () => window.__TAURI__?.window?.getCurrentWindow();
 
 // Title bar with a drag area and window buttons; pages without the system
 // frame put it at the top of their layout and call mountWindowFrame().
-function windowFrame(title = "Tablet Center") {
+function windowFrame(title = "TabletForge") {
   const button = (act, label, glyph) =>
     `<button class="wf-button" data-window="${act}" aria-label="${esc(t(label))}">${glyph}</button>`;
   return `
@@ -242,7 +242,7 @@ function save() {
     try {
       saveShellMenus();
       const applied = await invoke("save_config", { config });
-      if (!applied) toast(t("Settings saved. Start tabletd to apply them."));
+      if (!applied) toast(t("Settings saved. Start tabletforged to apply them."));
     } catch (e) {
       toast(String(e));
     }
@@ -306,7 +306,7 @@ function welcome() {
         <p style="font-size:26px">${esc(t("Welcome to"))}</p>
         <p class="brand">tablet <b>Center</b></p>
         <p style="font-size:17px">${esc(t("Connect a device to see its settings here."))}</p>
-        ${status.error ? `<p style="color:#d8d8d8">${esc(t("The tablet driver is not responding."))} (tabletd)</p>` : ""}
+        ${status.error ? `<p style="color:#d8d8d8">${esc(t("The tablet driver is not responding."))} (tabletforged)</p>` : ""}
       </div>
     </section>`;
 }
@@ -448,7 +448,7 @@ function layoutCallouts() {
 // "upper_button" } or { page: "keys", index: 0 }. Cleared on navigation.
 let selected = null;
 
-// Action groups as in Tablet Center's Actions panel. Values are config
+// Action groups as in TabletForge's Actions panel. Values are config
 // actions; "preset:N" and "record" are ExpressKey keystrokes.
 const GESTURE_VALUES = ["pan_scroll", "pan_scroll_legacy", "pan_zoom", "scroll", "wheel", "zoom"];
 const CLICK_VALUES = ["left_click", "right_click", "middle_click", "double_click", "back", "forward"];
@@ -486,7 +486,7 @@ function actionLabel(value) {
   return t([...ACTIONS, ...KEY_ACTIONS].find(([v]) => v === value)?.[1] ?? value);
 }
 
-// Icon of each action, as Tablet Center shows it (assets/icons/action-*.svg).
+// Icon of each action, as TabletForge shows it (assets/icons/action-*.svg).
 const PRESET_ICONS = ["undo", "redo", "copy", "paste", "save"];
 // Shortcut actions use the On-screen shortcuts sidebar icons.
 const SHORTCUT_ICONS = {
@@ -1282,7 +1282,7 @@ function mountOnScreen(sub) {
   });
 }
 
-// Four dashed arrows with a pen, as in Tablet Center's gesture page.
+// Four dashed arrows with a pen, as in TabletForge's gesture page.
 function panIllustration(verticalOnly = false) {
   const arm = (x2, y2, a) =>
     `<line x1="210" y1="210" x2="${x2}" y2="${y2}" stroke-dasharray="14 12"/>` +
@@ -1325,7 +1325,7 @@ function settingsPage(tab = "general") {
       <p class="hint">${esc(t("Installs the GNOME Shell extension, systemd service, udev rules, and adds your user to the input group. Requires administrator rights."))}</p>
       <hr>
       <h3>${esc(t("Driver service"))}</h3>
-      <p><span class="status-dot ${running ? "on" : ""}"></span>${esc(t(running ? "Running" : "Not running"))} — tabletd</p>
+      <p><span class="status-dot ${running ? "on" : ""}"></span>${esc(t(running ? "Running" : "Not running"))} — tabletforged</p>
       <hr>
       <button class="button" id="restart">${esc(t("Restart Driver"))}</button>
       <hr>
@@ -1337,7 +1337,7 @@ function settingsPage(tab = "general") {
       <h3>${esc(t("Interface"))}</h3>
       ${uiStyleSelect()}
       <hr>
-      <label class="autostart-row" for="autostart">${esc(t("Tablet Center autostart"))}
+      <label class="autostart-row" for="autostart">${esc(t("TabletForge autostart"))}
         <span class="switch"><input type="checkbox" id="autostart" disabled><span></span></span>
       </label>`;
   } else if (tab === "backups") {
@@ -1415,7 +1415,7 @@ async function applyBackupCommand(command, args = {}) {
   const applied = await invoke(command, args);
   config = { ...structuredClone(DEFAULTS), ...(await invoke("get_config")) };
   render();
-  if (!applied) toast(t("Settings saved. Start tabletd to apply them."));
+  if (!applied) toast(t("Settings saved. Start tabletforged to apply them."));
 }
 
 function mountSettings(tab) {
@@ -1505,7 +1505,7 @@ function mountSettings(tab) {
   $("#restart")?.addEventListener("click", async () => {
     try {
       await invoke("restart_daemon");
-      toast("tabletd ✓");
+      toast("tabletforged ✓");
     } catch (e) {
       toast(String(e));
     }
@@ -1660,7 +1660,7 @@ function shellIcon(action) {
 }
 
 // Every menu as the extension draws it: sizes in pixels, labels in the
-// current language, and the action tabletd runs for each entry.
+// current language, and the action tabletforged runs for each entry.
 function shellMenus() {
   return Object.fromEntries(
     Object.values(ON_SCREEN).map(({ key, kind, title }) => {
@@ -1690,7 +1690,7 @@ function saveShellMenus() {
 }
 
 const SHELL_MENUS_HINT =
-  "Radial menus and grid panels are drawn by the Tablet Center GNOME Shell extension: they open at once and never take the focus. Without the extension they open in a window as before.";
+  "Radial menus and grid panels are drawn by the TabletForge GNOME Shell extension: they open at once and never take the focus. Without the extension they open in a window as before.";
 
 // Shared by the interfaces; the change handler below saves it.
 function shellMenusSwitch() {
@@ -1708,8 +1708,8 @@ document.addEventListener("change", (e) => {
 });
 
 async function init() {
-  document.title = "Tablet Center";
-  window.__TAURI__?.window?.getCurrentWindow().setTitle("Tablet Center").catch(() => {});
+  document.title = "TabletForge";
+  window.__TAURI__?.window?.getCurrentWindow().setTitle("TabletForge").catch(() => {});
   debrand(document.body);
   new MutationObserver((records) => records.forEach((r) => debrand(r.target))).observe(document.body, {
     childList: true,
@@ -1759,7 +1759,7 @@ function showHostIntegrationModal() {
   backdrop.className = "dialog-backdrop";
   backdrop.innerHTML = `<div class="dialog" role="dialog" aria-modal="true" style="max-width:480px">
     <h3>${esc(t("Host integration setup"))}</h3>
-    <p>${esc(t("Tablet Center needs a few components installed on your host system to work fully:"))}</p>
+    <p>${esc(t("TabletForge needs a few components installed on your host system to work fully:"))}</p>
     <div id="host-modal-status"></div>
     <div class="setup-log" id="host-modal-log" hidden></div>
     <p class="hint">${esc(t("This installs the GNOME Shell extension, a systemd service, a staged daemon, a udev rule, and adds your user to the input group. Administrator rights may be required."))}</p>

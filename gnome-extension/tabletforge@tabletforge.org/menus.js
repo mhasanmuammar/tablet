@@ -1,7 +1,7 @@
 // On-screen shortcuts drawn by GNOME Shell: the radial menus and grid
-// panels Tablet Center otherwise opens in a window. Tablet Center writes the
+// panels TabletForge otherwise opens in a window. TabletForge writes the
 // menus, already translated, to shell-menus.json; picking an entry asks
-// tabletd to run its action, as the window does.
+// tabletforged to run its action, as the window does.
 
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
@@ -10,8 +10,8 @@ import Pango from 'gi://Pango';
 import St from 'gi://St';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
-const MENUS_FILE = GLib.build_filenamev([GLib.get_user_config_dir(), 'tablet-center', 'shell-menus.json']);
-const SOCKET = GLib.build_filenamev([GLib.get_user_runtime_dir(), 'tabletd.sock']);
+const MENUS_FILE = GLib.build_filenamev([GLib.get_user_config_dir(), 'tabletforge', 'shell-menus.json']);
+const SOCKET = GLib.build_filenamev([GLib.get_user_runtime_dir(), 'tabletforged.sock']);
 
 // Opening zooms in from 90 %, closing zooms back out.
 const SHOW_MS = 140;
@@ -28,7 +28,7 @@ function loadMenus() {
     return JSON.parse(new TextDecoder().decode(bytes));
 }
 
-// One request on tabletd's socket, the same Tablet Center sends.
+// One request on tabletforged's socket, the same TabletForge sends.
 function runAction(action) {
     const client = new Gio.SocketClient();
     client.connect_async(Gio.UnixSocketAddress.new(SOCKET), null, (source, result) => {
@@ -37,7 +37,7 @@ function runAction(action) {
             conn = source.connect_finish(result);
             const line = `${JSON.stringify({cmd: 'run', action})}\n`;
             conn.get_output_stream().write_all(new TextEncoder().encode(line), null);
-            // Read the answer so tabletd is not cut off mid-reply.
+            // Read the answer so tabletforged is not cut off mid-reply.
             conn.get_input_stream().read_bytes_async(4096, GLib.PRIORITY_DEFAULT, null, (input, res) => {
                 try {
                     input.read_bytes_finish(res);
@@ -46,7 +46,7 @@ function runAction(action) {
             });
         } catch (e) {
             conn?.close(null);
-            console.error(`Tablet Center: tabletd did not take the action: ${e.message}`);
+            console.error(`TabletForge: tabletforged did not take the action: ${e.message}`);
         }
     });
 }
@@ -230,8 +230,8 @@ export class MenuHost {
         this._runSource = 0;
     }
 
-    // Throws when it cannot show the menu, so tabletd falls back to the
-    // Tablet Center window.
+    // Throws when it cannot show the menu, so tabletforged falls back to the
+    // TabletForge window.
     show(name, hasAt, x, y, centered) {
         if (this._open?.name === name) {
             this.close();

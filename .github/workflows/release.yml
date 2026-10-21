@@ -84,16 +84,16 @@ jobs:
 
       - name: Build Flatpak
         run: |
-          flatpak-builder --user --install-deps-from=flathub --force-clean --repo=repo build-dir packaging/flatpak/com.tabletcenter.TabletCenter.yml
+          flatpak-builder --user --install-deps-from=flathub --force-clean --repo=repo build-dir packaging/flatpak/org.tabletforge.TabletForge.yml
 
       - name: Create bundle
         run: |
-          flatpak build-bundle --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo repo com.tabletcenter.TabletCenter.flatpak com.tabletcenter.TabletCenter stable
+          flatpak build-bundle --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo repo org.tabletforge.TabletForge.flatpak org.tabletforge.TabletForge stable
 
       - uses: actions/upload-artifact@v4
         with:
           name: flatpak
-          path: com.tabletcenter.TabletCenter.flatpak
+          path: org.tabletforge.TabletForge.flatpak
 
   release:
     needs: [package-x86_64, package-aarch64, flatpak]
@@ -115,16 +115,16 @@ jobs:
       - name: Verify release assets
         run: |
           ls -la dist/
-          test -f dist/tablet-center-x86_64-linux.tar.gz
-          test -f dist/tablet-center-aarch64-linux.tar.gz
+          test -f dist/tabletforge-x86_64-linux.tar.gz
+          test -f dist/tabletforge-aarch64-linux.tar.gz
           test -f dist/install.sh.tar.gz
-          test -f dist/com.tabletcenter.TabletCenter.flatpak
+          test -f dist/org.tabletforge.TabletForge.flatpak
       - uses: softprops/action-gh-release@v2
         with:
           prerelease: true
           draft: false
           files: |
-            dist/tablet-center-x86_64-linux.tar.gz
-            dist/tablet-center-aarch64-linux.tar.gz
+            dist/tabletforge-x86_64-linux.tar.gz
+            dist/tabletforge-aarch64-linux.tar.gz
             dist/install.sh.tar.gz
-            dist/com.tabletcenter.TabletCenter.flatpak
+            dist/org.tabletforge.TabletForge.flatpak

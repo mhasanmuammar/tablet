@@ -1,0 +1,54 @@
+app-id: org.tabletforge.TabletForge
+default-branch: stable
+runtime: org.gnome.Platform
+runtime-version: '51'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+# SDKs based on freedesktop >= 24.08 no longer ship appstream-compose, so
+# flatpak-builder's default compose stage fails. Disable it; the metainfo is
+# still installed under share/metainfo.
+appstream-compose: false
+command: tabletforge
+finish-args:
+  - --device=all
+  - --filesystem=xdg-config
+  - --filesystem=xdg-data
+  # daemon socket: $XDG_RUNTIME_DIR/tabletforged.sock (bare xdg-run is rejected by
+  # flatpak >= 1.18, so grant just the socket file)
+  - --filesystem=xdg-run/tabletforged.sock
+  - --socket=wayland
+  - --socket=session-bus
+  - --talk-name=org.gnome.Shell
+  - --talk-name=org.freedesktop.Flatpak
+  - --share=network
+  - --share=ipc
+modules:
+  - name: tabletforge
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_HOME: /run/build/tabletforge/.cargo
+      build-args:
+        - --share=network
+    build-commands:
+      - cargo build --release -p tabletforged -p tabletforge
+      - install -Dm755 target/release/tabletforged /app/bin/tabletforged
+      - install -Dm755 target/release/tabletforge /app/bin/tabletforge
+      - install -Dm644 packaging/flatpak/org.tabletforge.TabletForge.desktop /app/share/applications/org.tabletforge.TabletForge.desktop
+      - install -Dm644 packaging/flatpak/org.tabletforge.TabletForge.metainfo.xml /app/share/metainfo/org.tabletforge.TabletForge.metainfo.xml
+      - install -Dm644 packaging/icons/tabletforge-512.png /app/share/icons/hicolor/512x512/apps/org.tabletforge.TabletForge.png
+      - install -Dm644 packaging/icons/tabletforge-256.png /app/share/icons/hicolor/256x256/apps/org.tabletforge.TabletForge.png
+      - install -Dm644 packaging/icons/tabletforge-128.png /app/share/icons/hicolor/128x128/apps/org.tabletforge.TabletForge.png
+      - install -Dm644 packaging/icons/tabletforge-64.png /app/share/icons/hicolor/64x64/apps/org.tabletforge.TabletForge.png
+      - install -Dm644 packaging/icons/tabletforge-48.png /app/share/icons/hicolor/48x48/apps/org.tabletforge.TabletForge.png
+      - install -Dm644 gnome-extension/tabletforge@tabletforge.org/extension.js /app/share/gnome-shell/extensions/tabletforge@tabletforge.org/extension.js
+      - install -Dm644 gnome-extension/tabletforge@tabletforge.org/metadata.json /app/share/gnome-shell/extensions/tabletforge@tabletforge.org/metadata.json
+      - install -Dm644 gnome-extension/tabletforge@tabletforge.org/menus.js /app/share/gnome-shell/extensions/tabletforge@tabletforge.org/menus.js
+      - install -Dm644 gnome-extension/tabletforge@tabletforge.org/stylesheet.css /app/share/gnome-shell/extensions/tabletforge@tabletforge.org/stylesheet.css
+      - install -Dm644 packaging/70-tabletforge.rules /app/share/udev/rules.d/70-tabletforge.rules
+      - install -Dm644 packaging/tabletforged.service /app/share/systemd/user/tabletforged.service
+    sources:
+      - type: dir
+        path: ../..
