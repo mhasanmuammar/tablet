@@ -351,6 +351,18 @@ input[type="range"]::-webkit-slider-thumb {
 }
 .notice-banner .icon { width: 20px; height: 20px; flex: none; margin-top: 1px; color: var(--accent); }
 .notice-banner p { margin: 0; font-size: 14px; }
+.notice-banner .button { flex: none; margin-left: auto; }
+
+/* Live progress log of the host setup dialog. */
+.setup-log {
+  margin: 8px 0 4px; padding: 10px 12px; border-radius: 8px;
+  background: rgba(0, 0, 0, .25); max-height: 132px; overflow-y: auto;
+  font-size: 12px; line-height: 1.45;
+}
+.setup-log p { margin: 1px 0; word-break: break-word; }
+.setup-log .log-ok { color: #30a46c; }
+.setup-log .log-err { color: #e5484d; }
+.setup-log .log-info { color: var(--muted); }
 
 #toast {
   position: fixed;

@@ -1,4 +1,11 @@
 # Tablet Center: lets the signed-in user create the virtual pen, pointer and
-# keyboard that tabletd drives (uinput). Reading the tablet and the mice
-# still needs the "input" group.
+# keyboard that tabletd drives (uinput), and lets it read the physical
+# tablet and the mice. Access is granted with uaccess — an ACL for the
+# logged-in user — because a long-lived systemd user manager that was not
+# restarted does not pick up later "input" group memberships.
 KERNEL=="uinput", SUBSYSTEM=="misc", TAG+="uaccess", OPTIONS+="static_node=uinput"
+KERNEL=="event*", SUBSYSTEM=="input", ENV{ID_INPUT_TABLET}=="1", TAG+="uaccess"
+KERNEL=="event*", SUBSYSTEM=="input", ENV{ID_INPUT_MOUSE}=="1", TAG+="uaccess"
+KERNEL=="event*", SUBSYSTEM=="input", ENV{ID_INPUT_TOUCHPAD}=="1", TAG+="uaccess"
+KERNEL=="event*", SUBSYSTEM=="input", ENV{ID_INPUT_TOUCHSCREEN}=="1", TAG+="uaccess"
+KERNEL=="event*", SUBSYSTEM=="input", ENV{ID_INPUT_POINTINGSTICK}=="1", TAG+="uaccess"

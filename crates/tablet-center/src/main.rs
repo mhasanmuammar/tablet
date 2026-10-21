@@ -12,7 +12,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use gtk::prelude::*;
-use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 use tablet_config::{Config, KeyAction, Request, Response};
 
 // Commands that touch the disk, the daemon or other programs are `async`,
@@ -420,6 +420,21 @@ struct HostIntegrationStatus {
     all_ok: bool,
 }
 
+/// Progress lines streamed to the UI while host setup runs ("host-setup-log"
+/// events). kind: "step" (running), "ok", "err", "info".
+#[derive(Clone, serde::Serialize)]
+struct SetupLog {
+    kind: String,
+    text: String,
+}
+
+fn emit_setup_log(app: &tauri::AppHandle, kind: &str, text: &str) {
+    let _ = app.emit(
+        "host-setup-log",
+        SetupLog { kind: kind.to_string(), text: text.to_string() },
+    );
+}
+
 fn ext_dir() -> PathBuf {
     home().unwrap_or_default().join(".local/share/gnome-shell/extensions/tablet-center@tabletcenter.dev")
 }
@@ -476,6 +491,36 @@ fn udev_rule_installed_on_host() -> bool {
     }
 }
 
+/// Whether the installed rule matches the bundled one. The rule is staged
+/// into the host-visible helper directory first (the host cannot read
+/// sandbox paths) and compared with cmp.
+fn udev_rule_matches_host() -> bool {
+    let Some(src) = udev_rule_source() else {
+        return false;
+    };
+    let staged = match stage_host_file(&src, "70-tablet-center.rules") {
+        Ok(p) => p,
+        Err(_) => return false,
+    };
+    host_cmd(
+        "cmp",
+        &["-s", staged.to_str().unwrap_or_default(), udev_rule_path().to_str().unwrap_or_default()],
+    )
+    .is_ok()
+}
+
+/// Copies a file into ~/.local/share/tablet-center, where the host can read
+/// it (xdg-data is shared with the host in Flatpak).
+fn stage_host_file(src: &std::path::Path, name: &str) -> Result<PathBuf, String> {
+    let dir = home()?.join(".local/share/tablet-center");
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let dst = dir.join(name);
+    // Remove first: copying over a running daemon fails (ETXTBSY).
+    let _ = fs::remove_file(&dst);
+    fs::copy(src, &dst).map_err(|e| e.to_string())?;
+    Ok(dst)
+}
+
 /// Builds the single privileged script for host integration. `rule_path`
 /// must be a path the HOST can read (it is executed as root on the host,
 /// where paths like /app exist only for the Flatpak sandbox, not for it).
@@ -488,6 +533,9 @@ fn host_setup_script(rule_path: Option<&std::path::Path>) -> String {
         script.push_str(&format!("install -m 644 '{quoted}' \"$RULE\"\n"));
         script.push_str("udevadm control --reload || true\n");
         script.push_str("udevadm trigger --subsystem-match=misc --sysname-match=uinput || true\n");
+        // Re-process pugged-in input devices so the new uaccess ACLs apply
+        // without a replug.
+        script.push_str("udevadm trigger --subsystem-match=input || true\n");
     }
     // pkexec sets PKEXEC_UID to the invoking user; adding that user to
     // the input group is best effort (the UI checks and hints about it).
@@ -516,7 +564,9 @@ fn check_host_integration() -> HostIntegrationStatus {
 }
 
 #[tauri::command(async)]
-fn install_host_integration() -> Result<(), String> {
+fn install_host_integration(app: tauri::AppHandle) -> Result<(), String> {
+    let log = |kind: &str, text: &str| emit_setup_log(&app, kind, text);
+    log("step", "Checking what host integration is already installed…");
     let home_dir = home()?;
     let ext = ext_dir();
     let svc = service_path();
@@ -530,6 +580,7 @@ fn install_host_integration() -> Result<(), String> {
         PathBuf::from("gnome-extension/tablet-center@tabletcenter.dev")
     };
     if ext_src.is_dir() {
+        log("step", "Copying the GNOME Shell extension to the host…");
         fs::create_dir_all(&ext).map_err(|e| e.to_string())?;
         for entry in fs::read_dir(&ext_src).map_err(|e| e.to_string())? {
             let entry = entry.map_err(|e| e.to_string())?;
@@ -538,29 +589,28 @@ fn install_host_integration() -> Result<(), String> {
                 fs::copy(entry.path(), &dest).map_err(|e| e.to_string())?;
             }
         }
+        log("ok", "GNOME Shell extension installed.");
     }
 
     // Install systemd service.
     if let Some(parent) = svc.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-    // Install systemd service. Exec path depends on runtime: in Flatpak the
-    // daemon is not on the host yet, so copy it from /app/bin into the
-    // host-visible helper directory (~/.local/share is shared with the
-    // host's filesystem) and point systemd there. Native installs can rely
-    // on install.sh having placed tabletd in ~/.local/bin.
+    // Exec path depends on runtime: in Flatpak the daemon is not on the host
+    // yet, so copy it from /app/bin into the host-visible helper directory
+    // (~/.local/share is shared with the host's filesystem) and point
+    // systemd there. Native installs can rely on install.sh having placed
+    // tabletd in ~/.local/bin.
     let daemon_bin = if is_flatpak() {
-        let dir = home_dir.join(".local/share/tablet-center");
-        fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-        let dst = dir.join("tabletd");
-        // Remove first: copying over a running daemon fails (ETXTBSY).
-        let _ = fs::remove_file(&dst);
-        fs::copy("/app/bin/tabletd", &dst).map_err(|e| format!("Could not stage the daemon for the host: {e}"))?;
+        log("step", "Staging the daemon binary for the host…");
+        let dst = stage_host_file(std::path::Path::new("/app/bin/tabletd"), "tabletd")
+            .map_err(|e| format!("Could not stage the daemon for the host: {e}"))?;
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
             fs::set_permissions(&dst, fs::Permissions::from_mode(0o755)).map_err(|e| e.to_string())?;
         }
+        log("ok", "Daemon staged.");
         dst
     } else {
         home_dir.join(".local/bin/tabletd")
@@ -570,37 +620,59 @@ fn install_host_integration() -> Result<(), String> {
         daemon_bin.display()
     );
     fs::write(&svc, service_content).map_err(|e| e.to_string())?;
-
-    // Enable and start the service.
-    host_cmd("systemctl", &["--user", "daemon-reload"])?;
-    host_cmd("systemctl", &["--user", "enable", "tabletd.service"])?;
-    let _ = host_cmd("systemctl", &["--user", "restart", "tabletd.service"]);
+    log("ok", "Systemd service installed.");
 
     // udev rule and input group need administrator rights on the host. Ask
     // for them the standard way (polkit): one authentication dialog for all
-    // privileged steps, run only when the steps are not already done (the
-    // native installer already sets both up).
-    let need_rule = !udev_rule_installed_on_host();
-    let host_rule_path = if need_rule {
-        let src = udev_rule_source()
-            .ok_or_else(|| "The udev rule template is missing from this install; re-run install.sh or reinstall the Flatpak.".to_string())?;
-        // Copy the rule where the host can read it: xdg-data (~/.local/share)
-        // is shared with the host in Flatpak. The /app sandbox paths cannot
-        // appear in the privileged script.
-        let dir = home()?.join(".local/share/tablet-center");
-        fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-        let dst = dir.join("70-tablet-center.rules");
-        fs::copy(&src, &dst).map_err(|e| e.to_string())?;
-        Some(dst)
-    } else {
-        None
+    // privileged steps. The rule is refreshed when its content differs from
+    // the bundled one (upgrading an older install).
+    let rule_installed = udev_rule_installed_on_host();
+    let mut need_rule = !rule_installed;
+    let staged_rule = match udev_rule_source() {
+        Some(src) => {
+            log("step", "Staging the udev rule…");
+            let dst = stage_host_file(&src, "70-tablet-center.rules")
+                .map_err(|e| format!("Could not stage the udev rule: {e}"))?;
+            if rule_installed
+                && host_cmd(
+                    "cmp",
+                    &["-s", dst.to_str().unwrap_or_default(), udev_rule_path().to_str().unwrap_or_default()],
+                )
+                .is_err()
+            {
+                need_rule = true; // content differs from an older install
+            }
+            Some(dst)
+        }
+        None => {
+            if !rule_installed {
+                return Err("The udev rule template is missing from this install; re-run install.sh or reinstall the Flatpak.".to_string());
+            }
+            None
+        }
     };
     let need_group = !user_in_input_group();
     if need_rule || need_group {
-        host_privileged(&host_setup_script(host_rule_path.as_deref()))?;
+        log("info", "Administrator rights needed for the udev rule — an authentication dialog will open…");
+        host_privileged(&host_setup_script(staged_rule.as_deref()))?;
+        log("ok", "Udev rule and user groups updated.");
+    }
+
+    // Start the daemon AFTER the privileged steps: its fresh process then
+    // sees the new udev ACLs (and the input group if the manager has been
+    // restarted meanwhile).
+    log("step", "Starting the tabletd service…");
+    host_cmd("systemctl", &["--user", "daemon-reload"])?;
+    host_cmd("systemctl", &["--user", "enable", "tabletd.service"])?;
+    let _ = host_cmd("systemctl", &["--user", "restart", "tabletd.service"]);
+    match host_output("systemctl", &["--user", "is-active", "tabletd.service"]) {
+        Ok(s) if s.trim() == "active" => log("ok", "The tabletd service is running."),
+        Ok(_) => log("err", "The tabletd service did not start — check the status list below (a logout may help)."),
+        Err(e) => log("err", &format!("Could not talk to systemd: {e}")),
     }
 
     // Enable GNOME Shell extension.
+    log("step", "Enabling the GNOME Shell extension…");
     let ext_id = "tablet-center@tabletcenter.dev";
     let enabled = host_output("gsettings", &["get", "org.gnome.shell", "enabled-extensions"]).unwrap_or_default();
     if !enabled.contains(ext_id) {
@@ -611,6 +683,7 @@ fn install_host_integration() -> Result<(), String> {
             let _ = host_cmd("gsettings", &["set", "org.gnome.shell", "enabled-extensions", &new]);
         }
     }
+    log("ok", "GNOME Shell extension enabled.");
 
     // Mark as checked.
     let marker = home_dir.join(".config/tablet-center/.host-integration-checked");
@@ -619,14 +692,17 @@ fn install_host_integration() -> Result<(), String> {
     }
     let _ = fs::write(marker, "");
 
+    log("ok", "Host setup complete.");
     Ok(())
 }
 
 #[tauri::command(async)]
-fn remove_host_integration() -> Result<(), String> {
+fn remove_host_integration(app: tauri::AppHandle) -> Result<(), String> {
+    let log = |kind: &str, text: &str| emit_setup_log(&app, kind, text);
     let ext = ext_dir();
     let svc = service_path();
 
+    log("step", "Stopping and removing the daemon service…");
     // Remove extension.
     let _ = fs::remove_dir_all(&ext);
 
@@ -641,10 +717,12 @@ fn remove_host_integration() -> Result<(), String> {
 
     // Remove udev rule (needs administrator rights; see host_privileged).
     if udev_rule_installed_on_host() {
+        log("info", "Administrator rights needed to remove the udev rule — an authentication dialog will open…");
         host_privileged(
-            "#!/bin/sh\n# Tablet Center host cleanup, run as root via pkexec.\nset -e\nrm -f /etc/udev/rules.d/70-tablet-center.rules\nudevadm control --reload\n",
+            "#!/bin/sh\n# Tablet Center host cleanup, run as root via pkexec.\nset -e\nrm -f /etc/udev/rules.d/70-tablet-center.rules\nudevadm control --reload\nudevadm trigger --subsystem-match=misc --sysname-match=uinput || true\n",
         )?;
     }
+    log("ok", "Host integration removed.");
 
     // Remove extension from gsettings.
     let ext_id = "tablet-center@tabletcenter.dev";

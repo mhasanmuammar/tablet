@@ -1422,15 +1422,12 @@ function mountSettings(tab) {
   const handle = (callback) => async () => {
     try { await callback(); } catch (e) { toast(String(e)); }
   };
-  // Host integration handlers (general tab)
+  // Host integration handlers (general tab). Setup runs in the dialog so
+  // its progress log is always visible.
+  $("#notice-setup")?.addEventListener("click", () => showHostIntegrationModal());
   const hostIntegrate = $("#host-integrate");
   if (hostIntegrate) {
-    hostIntegrate.onclick = handle(async () => {
-      await invoke("install_host_integration");
-      // Persistent notice instead of a disappearing toast.
-      hostNeedsLogout = true;
-      render();
-    });
+    hostIntegrate.onclick = handle(async () => showHostIntegrationModal());
   }
   const hostRemove = $("#host-remove");
   if (hostRemove) {
@@ -1438,13 +1435,21 @@ function mountSettings(tab) {
       if (!await settingsDialog(t("Remove all host integration components?"), t("Remove"))) return;
       await invoke("remove_host_integration");
       await renderHostIntegration();
+      // Removal is intentional: do not re-prompt for it this session.
+      hostNeedsLogout = false;
+      hostSetupPending = false;
+      render();
       toast(t("Host integration removed."));
     });
   }
   const hostRecheck = $("#host-recheck");
   if (hostRecheck) {
     hostRecheck.onclick = handle(async () => {
-      await renderHostIntegration();
+      const s = await renderHostIntegration();
+      if (s) {
+        hostSetupPending = !s.all_ok;
+        render();
+      }
     });
   }
   renderHostIntegration().catch(() => {});
@@ -1531,15 +1536,29 @@ function stopPolling() {
 
 let lastRoute = "";
 
-// True once host integration was (re)installed during this app session:
-// a logout/back-in is needed for the GNOME Shell extension and the input
-// group, so say so persistently on the home page and in settings (the
-// toast disappears too fast). Cleared when the app restarts.
-let hostNeedsLogout = false;
+// Fresh fs/systemd state of the host integration. When it is missing at
+// startup the app prompts for setup, wherever the user goes (see below).
+let hostNeedsLogout = false; // setup completed this session: session reload advised
+let hostSetupPending = false; // host integration incomplete at the last check
 
+function listenHostSetupLog(handler) {
+  const events = window.__TAURI__?.event;
+  if (!events?.listen) return Promise.resolve(null);
+  return events
+    .listen("host-setup-log", (e) => handler(e.payload ?? {}))
+    .catch(() => null);
+}
+
+// Persistent callout on the home page and in settings: post-setup advice
+// (until the app restarts) or, when setup is incomplete, the setup prompt.
 function homeSetupNotice() {
-  if (!hostNeedsLogout) return "";
-  return `<div class="notice-banner" role="status">${icon("info")}<p>${esc(t("Host integration installed. Log out and back in to load the GNOME Shell extension and apply the input-group change."))}</p></div>`;
+  if (hostNeedsLogout) {
+    return `<div class="notice-banner" role="status">${icon("info")}<p>${esc(t("Host integration installed. Log out and back in to load the GNOME Shell extension and apply the input-group change."))}</p></div>`;
+  }
+  if (hostSetupPending) {
+    return `<div class="notice-banner" role="status">${icon("info")}<p>${esc(t("Host integration is not fully set up. The driver needs a few components on this host."))}</p><button type="button" class="button" id="notice-setup">${esc(t("Set up now"))}</button></div>`;
+  }
+  return "";
 }
 
 function render() {
@@ -1565,6 +1584,7 @@ function render() {
     }
     // Persistent post-setup notice (pen/expresskey editors return above).
     view.insertAdjacentHTML("afterbegin", homeSetupNotice());
+    view.querySelector("#notice-setup")?.addEventListener("click", () => showHostIntegrationModal());
   } else if (section === "shortcuts") {
     view.innerHTML = shortcutsPage(sub);
     mountShortcuts(sub);
@@ -1703,14 +1723,14 @@ async function init() {
   status = await invoke("status");
   window.addEventListener("hashchange", render);
   render();
-  checkFirstLaunch();
+  checkHostSetupPrompt();
 }
 
 async function renderHostIntegration() {
   try {
     const s = await invoke("check_host_integration");
     const el = $("#host-integration-status");
-    if (!el) return;
+    if (!el) return s;
     const items = [
       [t("GNOME Shell extension"), s.extension_installed],
       [t("Systemd service"), s.service_installed],
@@ -1721,7 +1741,17 @@ async function renderHostIntegration() {
     el.innerHTML = items.map(([label, ok]) =>
       `<p style="margin:2px 0"><span class="status-dot ${ok ? "on" : ""}"></span>${esc(label)} — ${ok ? esc(t("OK")) : esc(t("Missing"))}</p>`
     ).join("");
-  } catch (e) { toast(String(e)); }
+    return s;
+  } catch (e) { toast(String(e)); return null; }
+}
+
+const HOST_STATUS_ROWS = ["GNOME Shell extension", "Systemd service", "Service running", "Udev rule", "Input group"];
+
+function hostStatusRows(s) {
+  return HOST_STATUS_ROWS.map((key) => {
+    const ok = { "GNOME Shell extension": s.extension_installed, "Systemd service": s.service_installed, "Service running": s.service_running, "Udev rule": s.udev_rule_installed, "Input group": s.user_in_input_group }[key];
+    return `<p style="margin:2px 0"><span class="status-dot ${ok ? "on" : ""}"></span>${esc(t(key))} — ${ok ? esc(t("OK")) : esc(t("Missing"))}</p>`;
+  }).join("");
 }
 
 function showHostIntegrationModal() {
@@ -1731,39 +1761,46 @@ function showHostIntegrationModal() {
     <h3>${esc(t("Host integration setup"))}</h3>
     <p>${esc(t("Tablet Center needs a few components installed on your host system to work fully:"))}</p>
     <div id="host-modal-status"></div>
-    <div class="notice-banner" id="host-modal-note" hidden>${icon("info")}<p>${esc(t("Host integration installed. Log out and back in to load the GNOME Shell extension and apply the input-group change."))}</p></div>
-    <p class="hint">${esc(t("This will install the GNOME Shell extension, a systemd service, a udev rule, and add your user to the input group. Administrator rights may be required."))}</p>
+    <div class="setup-log" id="host-modal-log" hidden></div>
+    <p class="hint">${esc(t("This installs the GNOME Shell extension, a systemd service, a staged daemon, a udev rule, and adds your user to the input group. Administrator rights may be required."))}</p>
     <div class="dialog-buttons">
       <button type="button" class="button primary" id="host-modal-setup">${esc(t("Set up now"))}</button>
     </div></div>`;
   document.body.appendChild(backdrop);
-  const close = () => backdrop.remove();
+  let unlisten = null;
+  const close = () => { unlisten?.then?.((off) => off?.()); backdrop.remove(); };
   const setupBtn = backdrop.querySelector("#host-modal-setup");
-  setupBtn.onclick = async () => {
+  const logbox = backdrop.querySelector("#host-modal-log");
+
+  // The Rust side streams progress lines onto "host-setup-log" events;
+  // show them as they arrive so the user sees what is happening (e.g. why
+  // an authentication dialog opened).
+  const appendLog = (payload) => {
+    if (!payload?.text) return;
+    const row = document.createElement("p");
+    row.className = `log-${payload.kind || "step"}`;
+    row.textContent = payload.text;
+    logbox.append(row);
+    logbox.scrollTop = logbox.scrollHeight;
+  };
+
+  const setup = async () => {
     setupBtn.disabled = true;
     setupBtn.textContent = t("Setting up...");
+    logbox.hidden = false;
+    logbox.replaceChildren();
+    if (!unlisten) unlisten = await listenHostSetupLog(appendLog);
     try {
       await invoke("install_host_integration");
-      await renderHostIntegration();
       const status = await invoke("check_host_integration");
-      const modalStatus = backdrop.querySelector("#host-modal-status");
-      if (modalStatus) {
-        modalStatus.innerHTML = Object.entries({
-          [t("GNOME Shell extension")]: status.extension_installed,
-          [t("Systemd service")]: status.service_installed,
-          [t("Service running")]: status.service_running,
-          [t("Udev rule")]: status.udev_rule_installed,
-          [t("Input group")]: status.user_in_input_group,
-        }).map(([l, ok]) => `<p style="margin:2px 0"><span class="status-dot ${ok ? "on" : ""}"></span>${esc(l)} — ${ok ? esc(t("OK")) : esc(t("Missing"))}</p>`).join("");
-      }
-      if (status.user_in_input_group === false) {
-        toast(t("Log out and back in for the input group to take effect."));
-      }
+      backdrop.querySelector("#host-modal-status")?.replaceWith(
+        Object.assign(document.createElement("div"), { id: "host-modal-status", innerHTML: hostStatusRows(status) }));
+      hostNeedsLogout = true;
+      hostSetupPending = !status.all_ok;
       // Show the result in the dialog; after it closes the same notice is
       // persistent on the home page and in settings.
-      hostNeedsLogout = true;
       const modalNote = backdrop.querySelector("#host-modal-note");
-      if (modalNote) modalNote.hidden = false;
+      if (modalNote && !status.all_ok) modalNote.hidden = false;
       setupBtn.textContent = t("Close");
       setupBtn.disabled = false;
       setupBtn.onclick = () => {
@@ -1772,34 +1809,35 @@ function showHostIntegrationModal() {
         renderHostIntegration().catch(() => {});
       };
     } catch (e) {
-      toast(String(e));
+      // Errors also arrive as log lines from the Rust side when it gets
+      // far enough; the catch covers invoking failures as a whole.
+      const row = document.createElement("p");
+      row.className = "log-err";
+      row.textContent = String(e);
+      logbox.append(row);
+      logbox.scrollTop = logbox.scrollHeight;
       setupBtn.disabled = false;
       setupBtn.textContent = t("Set up now");
     }
   };
+  setupBtn.onclick = setup;
+
   // Render initial status
   invoke("check_host_integration").then((s) => {
     const el = backdrop.querySelector("#host-modal-status");
-    if (el) {
-      el.innerHTML = Object.entries({
-        [t("GNOME Shell extension")]: s.extension_installed,
-        [t("Systemd service")]: s.service_installed,
-        [t("Service running")]: s.service_running,
-        [t("Udev rule")]: s.udev_rule_installed,
-        [t("Input group")]: s.user_in_input_group,
-      }).map(([l, ok]) => `<p style="margin:2px 0"><span class="status-dot ${ok ? "on" : ""}"></span>${esc(l)} — ${ok ? esc(t("OK")) : esc(t("Missing"))}</p>`).join("");
-    }
+    if (el) el.innerHTML = hostStatusRows(s);
   }).catch(() => {});
 }
 
-async function checkFirstLaunch() {
+// Prompt for host setup at startup whenever anything is missing; the
+// persistent banner's "Set up now" button opens the same dialog later.
+async function checkHostSetupPrompt() {
   try {
-    const first = await invoke("is_first_launch");
-    if (first) {
-      const status = await invoke("check_host_integration");
-      if (!status.all_ok) {
-        showHostIntegrationModal();
-      }
+    const status = await invoke("check_host_integration");
+    hostSetupPending = !status.all_ok;
+    if (!status.all_ok) {
+      render();
+      showHostIntegrationModal();
     }
   } catch (e) { /* ignore */ }
 }
