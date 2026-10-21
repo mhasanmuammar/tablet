@@ -432,12 +432,11 @@ fn udev_rule_path() -> PathBuf {
     PathBuf::from("/etc/udev/rules.d/70-tablet-center.rules")
 }
 
-/// Where the bundled udev rule file lives, for the runtime we are in.
+/// Where the bundled udev rule file lives. Looks near the current
+/// executable's prefix: covers /app (Flatpak) and prefix installs, plus the
+/// packaging directory of a checkout. Into privileged scripts these paths
+/// must never go (see host_setup_script): /app exists only in the sandbox.
 fn udev_rule_source() -> Option<PathBuf> {
-    if is_flatpak() {
-        let p = PathBuf::from("/app/share/udev/rules.d/70-tablet-center.rules");
-        return p.is_file().then_some(p);
-    }
     // Native builds: the packaging directory in a checkout (dev runs), or the
     // install prefix share directory for layout variants of package.sh.
     let mut candidates = vec![PathBuf::from("packaging/70-tablet-center.rules")];
@@ -453,6 +452,25 @@ fn user_in_input_group() -> bool {
     host_output("id", &["-nG"])
         .map(|s| s.split_whitespace().any(|g| g == "input"))
         .unwrap_or(false)
+}
+
+/// Builds the single privileged script for host integration. `rule_path`
+/// must be a path the HOST can read (it is executed as root on the host,
+/// where paths like /app exist only for the Flatpak sandbox, not for it).
+fn host_setup_script(rule_path: Option<&std::path::Path>) -> String {
+    let mut script = String::from(
+        "#!/bin/sh\n# Tablet Center host setup, run as root via\n# pkexec (polkit authentication).\nset -e\nRULE=/etc/udev/rules.d/70-tablet-center.rules\n",
+    );
+    if let Some(src) = rule_path {
+        let quoted = src.to_string_lossy().replace('\'', "'\\''");
+        script.push_str(&format!("install -m 644 '{quoted}' \"$RULE\"\n"));
+        script.push_str("udevadm control --reload || true\n");
+        script.push_str("udevadm trigger --subsystem-match=misc --sysname-match=uinput || true\n");
+    }
+    // pkexec sets PKEXEC_UID to the invoking user; adding that user to
+    // the input group is best effort (the UI checks and hints about it).
+    script.push_str("OWNER=$(id -nu \"$PKEXEC_UID\" 2>/dev/null || true)\n[ -n \"$OWNER\" ] && usermod -aG input \"$OWNER\" 2>/dev/null || true\n");
+    script
 }
 
 #[tauri::command(async)]
@@ -515,29 +533,25 @@ fn install_host_integration() -> Result<(), String> {
     // udev rule and input group need administrator rights on the host. Ask
     // for them the standard way (polkit): one authentication dialog for all
     // privileged steps, run only when the steps are not already done (the
-    // native installer already sets both up, so usually nothing is needed).
+    // native installer already sets both up).
     let need_rule = !udev_rule_path().is_file();
-    let rule_src = if need_rule { udev_rule_source() } else { None };
-    if need_rule && rule_src.is_none() {
-        return Err("The udev rule file is missing from this install; re-run install.sh or reinstall the Flatpak.".to_string());
-    }
+    let host_rule_path = if need_rule {
+        let src = udev_rule_source()
+            .ok_or_else(|| "The udev rule template is missing from this install; re-run install.sh or reinstall the Flatpak.".to_string())?;
+        // Copy the rule where the host can read it: xdg-data (~/.local/share)
+        // is shared with the host in Flatpak. The /app sandbox paths cannot
+        // appear in the privileged script.
+        let dir = home()?.join(".local/share/tablet-center");
+        fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        let dst = dir.join("70-tablet-center.rules");
+        fs::copy(&src, &dst).map_err(|e| e.to_string())?;
+        Some(dst)
+    } else {
+        None
+    };
     let need_group = !user_in_input_group();
     if need_rule || need_group {
-        let mut script = String::from(
-            "#!/bin/sh\n# Tablet Center host setup, run as root via pkexec.\nset -e\nRULE=/etc/udev/rules.d/70-tablet-center.rules\n",
-        );
-        if let Some(src) = &rule_src {
-            let quoted = src.to_string_lossy().replace('\'', "'\\''");
-            script.push_str(&format!("install -m 644 '{quoted}' \"$RULE\"\n"));
-            script.push_str("udevadm control --reload\n");
-            script.push_str("udevadm trigger --subsystem-match=misc --sysname-match=uinput\n");
-        }
-        // pkexec sets PKEXEC_UID to the invoking user; adding that user to
-        // the input group is best effort (the UI checks and hints about it).
-        script.push_str(
-            "OWNER=$(id -nu \"$PKEXEC_UID\" 2>/dev/null || true)\n[ -n \"$OWNER\" ] && usermod -aG input \"$OWNER\" 2>/dev/null || true\n",
-        );
-        host_privileged(&script)?;
+        host_privileged(&host_setup_script(host_rule_path.as_deref()))?;
     }
 
     // Enable GNOME Shell extension.
@@ -669,6 +683,7 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
 
     #[test]
     fn backup_filenames_cannot_escape_the_backup_folder() {
@@ -676,5 +691,29 @@ mod tests {
             assert!(backup_path(filename).is_err(), "{filename}");
         }
         assert_eq!(backup_path("My-tablet-123.json").unwrap(), backups_dir().unwrap().join("My-tablet-123.json"));
+    }
+
+    #[test]
+    fn host_setup_script_quotes_the_rule_path() {
+        let script = host_setup_script(Some(Path::new("/etc/it's a/test.rules")));
+        assert!(script.contains("install -m 644 '/etc/it'\\''s a/test.rules' \"$RULE\""), "{script}");
+    }
+
+    #[test]
+    fn host_setup_script_without_rule_still_adds_the_group() {
+        let script = host_setup_script(None);
+        assert!(!script.contains("install "), "{script}");
+        assert!(!script.contains("udevadm "), "{script}");
+        assert!(script.contains("usermod -aG input \"$OWNER\""), "{script}");
+    }
+
+    #[test]
+    fn host_setup_script_is_sh_compatible() {
+        // A trailing && with a false condition must not kill the script
+        // under set -e; udevadm steps are best effort like before.
+        let with_rule = host_setup_script(Some(Path::new("/etc/udev/rules.d/x.rules")));
+        assert!(with_rule.contains("udevadm control --reload || true"));
+        assert!(with_rule.contains("usermod -aG input \"$OWNER\" 2>/dev/null || true"));
+        assert!(with_rule.ends_with('\n'));
     }
 }
