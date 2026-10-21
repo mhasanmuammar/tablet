@@ -80,12 +80,9 @@ fn status() -> Response {
 
 #[tauri::command(async)]
 fn restart_daemon() -> Result<(), String> {
-    let ok = Command::new("systemctl")
-        .args(["--user", "restart", "tabletd.service"])
-        .status()
-        .map_err(|e| e.to_string())?
-        .success();
-    if ok { Ok(()) } else { Err("systemctl --user restart tabletd.service failed".into()) }
+    // systemctl does not exist inside the Flatpak sandbox; host_cmd routes
+    // through flatpak-spawn --host there.
+    host_cmd("systemctl", &["--user", "restart", "tabletd.service"])
 }
 
 fn home() -> Result<PathBuf, String> {
