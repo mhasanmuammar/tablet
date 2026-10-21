@@ -1314,6 +1314,16 @@ function settingsPage(tab = "general") {
   if (tab === "general") {
     const running = !status.error;
     body = `
+      ${homeSetupNotice()}
+      <h3>${esc(t("Host integration"))}</h3>
+      <div id="host-integration-status"></div>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button class="button" id="host-integrate">${esc(t("Set up host integration"))}</button>
+        <button class="button" id="host-remove">${esc(t("Remove host integration"))}</button>
+        <button class="button" id="host-recheck">${esc(t("Re-check"))}</button>
+      </div>
+      <p class="hint">${esc(t("Installs the GNOME Shell extension, systemd service, udev rules, and adds your user to the input group. Requires administrator rights."))}</p>
+      <hr>
       <h3>${esc(t("Driver service"))}</h3>
       <p><span class="status-dot ${running ? "on" : ""}"></span>${esc(t(running ? "Running" : "Not running"))} — tabletd</p>
       <hr>
@@ -1329,16 +1339,7 @@ function settingsPage(tab = "general") {
       <hr>
       <label class="autostart-row" for="autostart">${esc(t("Tablet Center autostart"))}
         <span class="switch"><input type="checkbox" id="autostart" disabled><span></span></span>
-      </label>
-  <hr>
-  <h3>${esc(t("Host integration"))}</h3>
-  <div id="host-integration-status"></div>
-  <div style="display:flex;gap:8px;margin-top:8px">
-    <button class="button" id="host-integrate">${esc(t("Set up host integration"))}</button>
-    <button class="button" id="host-remove">${esc(t("Remove host integration"))}</button>
-    <button class="button" id="host-recheck">${esc(t("Re-check"))}</button>
-  </div>
-  <p class="hint">${esc(t("Installs the GNOME Shell extension, systemd service, udev rules, and adds your user to the input group. Requires administrator rights."))}</p>`;
+      </label>`;
   } else if (tab === "backups") {
     body = `
       <div class="backup-buttons">
@@ -1426,8 +1427,9 @@ function mountSettings(tab) {
   if (hostIntegrate) {
     hostIntegrate.onclick = handle(async () => {
       await invoke("install_host_integration");
-      await renderHostIntegration();
-      toast(t("Host integration installed. Log out and back in for changes to take effect."));
+      // Persistent notice instead of a disappearing toast.
+      hostNeedsLogout = true;
+      render();
     });
   }
   const hostRemove = $("#host-remove");
@@ -1529,6 +1531,17 @@ function stopPolling() {
 
 let lastRoute = "";
 
+// True once host integration was (re)installed during this app session:
+// a logout/back-in is needed for the GNOME Shell extension and the input
+// group, so say so persistently on the home page and in settings (the
+// toast disappears too fast). Cleared when the app restarts.
+let hostNeedsLogout = false;
+
+function homeSetupNotice() {
+  if (!hostNeedsLogout) return "";
+  return `<div class="notice-banner" role="status">${icon("info")}<p>${esc(t("Host integration installed. Log out and back in to load the GNOME Shell extension and apply the input-group change."))}</p></div>`;
+}
+
 function render() {
   if (location.hash !== lastRoute) selected = null;
   lastRoute = location.hash;
@@ -1550,6 +1563,8 @@ function render() {
       if (sub === "mapping") mountMapping();
       if (sub === "expresskeys") return mountExpressKeys();
     }
+    // Persistent post-setup notice (pen/expresskey editors return above).
+    view.insertAdjacentHTML("afterbegin", homeSetupNotice());
   } else if (section === "shortcuts") {
     view.innerHTML = shortcutsPage(sub);
     mountShortcuts(sub);
@@ -1716,6 +1731,7 @@ function showHostIntegrationModal() {
     <h3>${esc(t("Host integration setup"))}</h3>
     <p>${esc(t("Tablet Center needs a few components installed on your host system to work fully:"))}</p>
     <div id="host-modal-status"></div>
+    <div class="notice-banner" id="host-modal-note" hidden>${icon("info")}<p>${esc(t("Host integration installed. Log out and back in to load the GNOME Shell extension and apply the input-group change."))}</p></div>
     <p class="hint">${esc(t("This will install the GNOME Shell extension, a systemd service, a udev rule, and add your user to the input group. Administrator rights may be required."))}</p>
     <div class="dialog-buttons">
       <button type="button" class="button primary" id="host-modal-setup">${esc(t("Set up now"))}</button>
@@ -1743,7 +1759,18 @@ function showHostIntegrationModal() {
       if (status.user_in_input_group === false) {
         toast(t("Log out and back in for the input group to take effect."));
       }
-      close();
+      // Show the result in the dialog; after it closes the same notice is
+      // persistent on the home page and in settings.
+      hostNeedsLogout = true;
+      const modalNote = backdrop.querySelector("#host-modal-note");
+      if (modalNote) modalNote.hidden = false;
+      setupBtn.textContent = t("Close");
+      setupBtn.disabled = false;
+      setupBtn.onclick = () => {
+        close();
+        render();
+        renderHostIntegration().catch(() => {});
+      };
     } catch (e) {
       toast(String(e));
       setupBtn.disabled = false;
