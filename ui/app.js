@@ -1718,12 +1718,10 @@ function showHostIntegrationModal() {
     <div id="host-modal-status"></div>
     <p class="hint">${esc(t("This will install the GNOME Shell extension, a systemd service, a udev rule, and add your user to the input group. Administrator rights may be required."))}</p>
     <div class="dialog-buttons">
-      <button type="button" class="button" data-cancel>${esc(t("Skip for now"))}</button>
       <button type="button" class="button primary" id="host-modal-setup">${esc(t("Set up now"))}</button>
     </div></div>`;
   document.body.appendChild(backdrop);
   const close = () => backdrop.remove();
-  backdrop.querySelector("[data-cancel]").onclick = close;
   const setupBtn = backdrop.querySelector("#host-modal-setup");
   setupBtn.onclick = async () => {
     setupBtn.disabled = true;

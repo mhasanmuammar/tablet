@@ -375,6 +375,41 @@ fn host_output(program: &str, args: &[&str]) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&out.stdout).to_string())
 }
 
+/// Run a shell script on the host with administrator rights, on the standard
+/// desktop authentication path: polkit. pkexec asks the session's
+/// authentication agent (GNOME Shell's "Authentication required" dialog);
+/// `sudo` cannot prompt from a GUI window or a Flatpak sandbox, and fails.
+/// The script is written where the host can read it (xdg-data is shared with
+/// the host in Flatpak) and removed afterwards. All privileged steps should
+/// go into one script so there is a single authentication dialog.
+fn host_privileged(script: &str) -> Result<(), String> {
+    let dir = home()?.join(".local/share/tablet-center");
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let path = dir.join("host-setup.sh");
+    fs::write(&path, script).map_err(|e| e.to_string())?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = fs::set_permissions(&path, fs::Permissions::from_mode(0o700));
+    }
+    // --disable-internal-agent: never fall back to a textual agent, which
+    // would block on the spawn pipe. pkexec exit codes (documented):
+    // 126 = the user dismissed the dialog, 127 = not authorized / failed.
+    let path_arg = path.to_str().unwrap_or_default().to_string();
+    let result = host_cmd("pkexec", &["--disable-internal-agent", "sh", &path_arg]);
+    let _ = fs::remove_file(&path);
+    match result {
+        Ok(()) => Ok(()),
+        Err(e) if e.contains("exit status: 126") => Err(format!(
+            "Setup was canceled at the authentication prompt. Approve the dialog to continue ({e})."
+        )),
+        Err(e) if e.contains("exit status: 127") => Err(format!(
+            "Administrator authentication failed: wrong password, no password-less prompt, or no authentication agent in this session ({e})."
+        )),
+        Err(e) => Err(format!("Administrator setup on the host failed: {e}")),
+    }
+}
+
 #[derive(serde::Serialize)]
 struct HostIntegrationStatus {
     extension_installed: bool,
@@ -397,6 +432,29 @@ fn udev_rule_path() -> PathBuf {
     PathBuf::from("/etc/udev/rules.d/70-tablet-center.rules")
 }
 
+/// Where the bundled udev rule file lives, for the runtime we are in.
+fn udev_rule_source() -> Option<PathBuf> {
+    if is_flatpak() {
+        let p = PathBuf::from("/app/share/udev/rules.d/70-tablet-center.rules");
+        return p.is_file().then_some(p);
+    }
+    // Native builds: the packaging directory in a checkout (dev runs), or the
+    // install prefix share directory for layout variants of package.sh.
+    let mut candidates = vec![PathBuf::from("packaging/70-tablet-center.rules")];
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(prefix) = exe.parent().and_then(|d| d.parent()) {
+            candidates.push(prefix.join("share/udev/rules.d/70-tablet-center.rules"));
+        }
+    }
+    candidates.into_iter().find(|p| p.is_file())
+}
+
+fn user_in_input_group() -> bool {
+    host_output("id", &["-nG"])
+        .map(|s| s.split_whitespace().any(|g| g == "input"))
+        .unwrap_or(false)
+}
+
 #[tauri::command(async)]
 fn check_host_integration() -> HostIntegrationStatus {
     let extension_installed = ext_dir().join("extension.js").is_file();
@@ -405,9 +463,7 @@ fn check_host_integration() -> HostIntegrationStatus {
         .map(|s| s.trim() == "active")
         .unwrap_or(false);
     let udev_rule_installed = udev_rule_path().is_file();
-    let user_in_input_group = host_output("id", &["-nG"])
-        .map(|s| s.split_whitespace().any(|g| g == "input"))
-        .unwrap_or(false);
+    let user_in_input_group = user_in_input_group();
     let all_ok = extension_installed && service_installed && service_running && udev_rule_installed && user_in_input_group;
     HostIntegrationStatus {
         extension_installed,
@@ -456,22 +512,32 @@ fn install_host_integration() -> Result<(), String> {
     host_cmd("systemctl", &["--user", "enable", "tabletd.service"])?;
     let _ = host_cmd("systemctl", &["--user", "restart", "tabletd.service"]);
 
-    // Install udev rule (requires sudo on host).
-    let udev_src = if is_flatpak() {
-        PathBuf::from("/app/share/udev/rules.d/70-tablet-center.rules")
-    } else {
-        PathBuf::from("packaging/70-tablet-center.rules")
-    };
-    if udev_src.is_file() {
-        host_cmd("sudo", &["install", "-m", "644", udev_src.to_str().unwrap_or(""), "/etc/udev/rules.d/70-tablet-center.rules"])?;
-        let _ = host_cmd("sudo", &["udevadm", "control", "--reload"]);
-        let _ = host_cmd("sudo", &["udevadm", "trigger", "--subsystem-match=misc", "--sysname-match=uinput"]);
+    // udev rule and input group need administrator rights on the host. Ask
+    // for them the standard way (polkit): one authentication dialog for all
+    // privileged steps, run only when the steps are not already done (the
+    // native installer already sets both up, so usually nothing is needed).
+    let need_rule = !udev_rule_path().is_file();
+    let rule_src = if need_rule { udev_rule_source() } else { None };
+    if need_rule && rule_src.is_none() {
+        return Err("The udev rule file is missing from this install; re-run install.sh or reinstall the Flatpak.".to_string());
     }
-
-    // Add user to input group.
-    let user = std::env::var("USER").unwrap_or_default();
-    if !user.is_empty() {
-        let _ = host_cmd("sudo", &["usermod", "-aG", "input", &user]);
+    let need_group = !user_in_input_group();
+    if need_rule || need_group {
+        let mut script = String::from(
+            "#!/bin/sh\n# Tablet Center host setup, run as root via pkexec.\nset -e\nRULE=/etc/udev/rules.d/70-tablet-center.rules\n",
+        );
+        if let Some(src) = &rule_src {
+            let quoted = src.to_string_lossy().replace('\'', "'\\''");
+            script.push_str(&format!("install -m 644 '{quoted}' \"$RULE\"\n"));
+            script.push_str("udevadm control --reload\n");
+            script.push_str("udevadm trigger --subsystem-match=misc --sysname-match=uinput\n");
+        }
+        // pkexec sets PKEXEC_UID to the invoking user; adding that user to
+        // the input group is best effort (the UI checks and hints about it).
+        script.push_str(
+            "OWNER=$(id -nu \"$PKEXEC_UID\" 2>/dev/null || true)\n[ -n \"$OWNER\" ] && usermod -aG input \"$OWNER\" 2>/dev/null || true\n",
+        );
+        host_privileged(&script)?;
     }
 
     // Enable GNOME Shell extension.
@@ -509,9 +575,12 @@ fn remove_host_integration() -> Result<(), String> {
     let _ = fs::remove_file(&svc);
     let _ = host_cmd("systemctl", &["--user", "daemon-reload"]);
 
-    // Remove udev rule.
-    let _ = host_cmd("sudo", &["rm", "-f", "/etc/udev/rules.d/70-tablet-center.rules"]);
-    let _ = host_cmd("sudo", &["udevadm", "control", "--reload"]);
+    // Remove udev rule (needs administrator rights; see host_privileged).
+    if udev_rule_path().is_file() {
+        host_privileged(
+            "#!/bin/sh\n# Tablet Center host cleanup, run as root via pkexec.\nset -e\nrm -f /etc/udev/rules.d/70-tablet-center.rules\nudevadm control --reload\n",
+        )?;
+    }
 
     // Remove extension from gsettings.
     let ext_id = "tablet-center@tabletcenter.dev";
