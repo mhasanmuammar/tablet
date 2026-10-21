@@ -3,7 +3,9 @@
 Procedure plan for the roadmap items in README.md: simplify the UX,
 deprecate unnecessary stuff, move settings storage to GNOME-standard
 GSettings, and port the UI to Adwaita widgets. Each phase ships working,
-committable code — no half-broken trees between phases.
+committable code — no half-broken trees between phases. The rewrite ships
+as **alpha** releases starting at `0.1.1` — a new version line, not a
+continuation of `0.2.0-beta.x`.
 
 Non-negotiables throughout (see AGENTS.md):
 
@@ -85,4 +87,7 @@ Non-negotiables throughout (see AGENTS.md):
   install step); keep udev rule + legacy cleanups.
 - [ ] README features/install rebuilt around the Adwaita UI; update
   `AGENTS.md` (crate layout, i18n, dev loop) and `dev.sh`.
-- [ ] Bump version (next beta series), tag only when asked.
+- [ ] Bump version for the rewrite's first release: **`0.1.1-alpha.1`**
+  (alpha series — the pre-rewrite `0.2.0-beta.x` line is history, not a
+  base). Tag only when asked; the tag must equal the version in
+  `Cargo.toml` *and* `crates/tabletforge/tauri.conf.json`.
