@@ -1,9 +1,74 @@
+name: Release
+
+# Push a tag such as v0.1.6 (matching the version in Cargo.toml) to build
+# per-arch archives and Flatpak bundle, and attach them to a prerelease.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  package-x86_64:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag matches Cargo.toml
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          test "v$version" = "$GITHUB_REF_NAME"
+      - name: System libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --workspace
+      - id: package
+        run: |
+          archive=$(scripts/package.sh | tail -1)
+          test -f "$archive" || { echo "Archive not produced: $archive" >&2; exit 1; }
+          echo "archive=$archive" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: archive-x86_64
+          path: ${{ steps.package.outputs.archive }}
+
+  package-aarch64:
+    runs-on: ubuntu-22.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag matches Cargo.toml
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          test "v$version" = "$GITHUB_REF_NAME"
+      - name: System libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --workspace
+      - id: package
+        run: |
+          archive=$(scripts/package.sh | tail -1)
+          test -f "$archive" || { echo "Archive not produced: $archive" >&2; exit 1; }
+          echo "archive=$archive" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: archive-aarch64
+          path: ${{ steps.package.outputs.archive }}
+
   flatpak:
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
 
-      - name: Install flatpak-builder
+      - name: Install flatpak and flatpak-builder
         run: |
           sudo apt-get update
           sudo apt-get install -y flatpak flatpak-builder
@@ -11,22 +76,55 @@
       - name: Setup user flatpak
         run: |
           mkdir -p ~/.local/share/flatpak
-          flatpak --user remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak --user remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
 
       - name: Install GNOME runtime and SDK
         run: |
-          flatpak --user install -y flathub org.gnome.Platform//51 org.gnome.Sdk//51 org.freedesktop.Sdk.Extension.rust-stable//23.08
+          flatpak --user install -y flathub org.gnome.Platform//51 org.gnome.Sdk//51 org.freedesktop.Sdk.Extension.rust-stable//26.08
 
       - name: Build Flatpak
         run: |
-          flatpak-builder --user --force-clean build-dir packaging/flatpak/com.tabletcenter.TabletCenter.yml
+          flatpak-builder --user --install-deps-from=flathub --force-clean --repo=repo build-dir packaging/flatpak/com.tabletcenter.TabletCenter.yml
 
       - name: Create bundle
         run: |
-          flatpak build-export --user repo build-dir
-          flatpak build-bundle --user repo com.tabletcenter.TabletCenter.flatpak com.tabletcenter.TabletCenter
+          flatpak build-bundle --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo repo com.tabletcenter.TabletCenter.flatpak com.tabletcenter.TabletCenter stable
 
       - uses: actions/upload-artifact@v4
         with:
           name: flatpak
           path: com.tabletcenter.TabletCenter.flatpak
+
+  release:
+    needs: [package-x86_64, package-aarch64, flatpak]
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Build bootstrap installer
+        run: |
+          tmpdir=$(mktemp -d)
+          mkdir -p "$tmpdir/install"
+          cp -r install.sh uninstall.sh packaging gnome-extension LICENSE README.md "$tmpdir/install/"
+          tar -C "$tmpdir" -czf dist/install.sh.tar.gz install
+          rm -rf "$tmpdir"
+      - name: Verify release assets
+        run: |
+          ls -la dist/
+          test -f dist/tablet-center-x86_64-linux.tar.gz
+          test -f dist/tablet-center-aarch64-linux.tar.gz
+          test -f dist/install.sh.tar.gz
+          test -f dist/com.tabletcenter.TabletCenter.flatpak
+      - uses: softprops/action-gh-release@v2
+        with:
+          prerelease: true
+          draft: false
+          files: |
+            dist/tablet-center-x86_64-linux.tar.gz
+            dist/tablet-center-aarch64-linux.tar.gz
+            dist/install.sh.tar.gz
+            dist/com.tabletcenter.TabletCenter.flatpak

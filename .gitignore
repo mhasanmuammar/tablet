@@ -17,3 +17,11 @@
 
 # Container build cache
 .container-cache/
+
+# Flatpak build output
+.flatpak-builder/
+build-dir/
+repo/
+*.flatpak
+.fp-test/
+.kilo/

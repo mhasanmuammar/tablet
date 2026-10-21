@@ -1,4 +1,5 @@
 app-id: com.tabletcenter.TabletCenter
+default-branch: stable
 runtime: org.gnome.Platform
 runtime-version: '51'
 sdk: org.gnome.Sdk
@@ -20,14 +21,18 @@ modules:
   - name: tablet-center
     buildsystem: simple
     build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_HOME: /run/build/tablet-center/.cargo
       build-args:
         - --share=network
-      append-path: /usr/lib/sdk/rust-stable/bin
     build-commands:
       - cargo build --release -p tabletd -p tablet-center
       - install -Dm755 target/release/tabletd /app/bin/tabletd
       - install -Dm755 target/release/tablet-center /app/bin/tablet-center
-      - install -Dm644 packaging/tablet-center.desktop /app/share/applications/com.tabletcenter.TabletCenter.desktop
+      - install -Dm644 packaging/flatpak/com.tabletcenter.TabletCenter.desktop /app/share/applications/com.tabletcenter.TabletCenter.desktop
+      - install -Dm644 packaging/flatpak/com.tabletcenter.TabletCenter.metainfo.xml /app/share/metainfo/com.tabletcenter.TabletCenter.metainfo.xml
+      - install -Dm644 packaging/icons/tablet-center-512.png /app/share/icons/hicolor/512x512/apps/com.tabletcenter.TabletCenter.png
       - install -Dm644 packaging/icons/tablet-center-256.png /app/share/icons/hicolor/256x256/apps/com.tabletcenter.TabletCenter.png
       - install -Dm644 packaging/icons/tablet-center-128.png /app/share/icons/hicolor/128x128/apps/com.tabletcenter.TabletCenter.png
       - install -Dm644 packaging/icons/tablet-center-64.png /app/share/icons/hicolor/64x64/apps/com.tabletcenter.TabletCenter.png
@@ -41,10 +46,3 @@ modules:
     sources:
       - type: dir
         path: ../..
-  - name: metainfo
-    buildsystem: simple
-    build-commands:
-      - install -Dm644 com.tabletcenter.TabletCenter.metainfo.xml /app/share/metainfo/com.tabletcenter.TabletCenter.metainfo.xml
-    sources:
-      - type: file
-        path: com.tabletcenter.TabletCenter.metainfo.xml

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Tablet Center
+Comment=Settings app and daemon for Wacom pen tablets on GNOME (Wayland)
+Exec=tablet-center
+Icon=com.tabletcenter.TabletCenter
+Categories=Settings;HardwareSettings;
+Terminal=false
+StartupWMClass=tablet-center

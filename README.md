@@ -87,6 +87,22 @@ Get the archive matching your arch from the
 [latest release](https://github.com/mhasanmuammar/tablet/releases/latest),
 extract it, and run `./install.sh` inside the extracted folder.
 
+### Flatpak bundle (.flatpak)
+
+You can install the standalone Flatpak bundle `com.tabletcenter.TabletCenter.flatpak` available in the [latest release](https://github.com/mhasanmuammar/tablet/releases/latest).
+
+To install:
+```sh
+flatpak install --user com.tabletcenter.TabletCenter.flatpak
+```
+
+To run:
+```sh
+flatpak run com.tabletcenter.TabletCenter
+```
+
+> **Host integration:** When launched inside Flatpak, Tablet Center includes a host integration helper that sets up the GNOME Shell extension, systemd user service for `tabletd`, and udev permissions on your host.
+
 ### Uninstall
 
 ```sh
@@ -136,6 +152,18 @@ The release archive lands in `dist/tablet-center-<arch>-linux.tar.gz`. The
 image also ships a small runtime stage (`tablet-center:final`) with the
 binaries and their shared libraries under `/output/bin/`, plus the archive in
 `/output/`.
+
+### Flatpak build
+
+To build the Flatpak application and create a standalone `.flatpak` bundle locally:
+
+```sh
+# Build and export to a local repository
+flatpak-builder --user --install-deps-from=flathub --force-clean --repo=repo build-dir packaging/flatpak/com.tabletcenter.TabletCenter.yml
+
+# Create single-file bundle
+flatpak build-bundle --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo repo com.tabletcenter.TabletCenter.flatpak com.tabletcenter.TabletCenter stable
+```
 
 ## Guide
 
