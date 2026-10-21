@@ -5,12 +5,18 @@ runtime-version: '51'
 sdk: org.gnome.Sdk
 sdk-extensions:
   - org.freedesktop.Sdk.Extension.rust-stable
+# SDKs based on freedesktop >= 24.08 no longer ship appstream-compose, so
+# flatpak-builder's default compose stage fails. Disable it; the metainfo is
+# still installed under share/metainfo.
+appstream-compose: false
 command: tablet-center
 finish-args:
   - --device=all
   - --filesystem=xdg-config
   - --filesystem=xdg-data
-  - --filesystem=xdg-run
+  # daemon socket: $XDG_RUNTIME_DIR/tabletd.sock (bare xdg-run is rejected by
+  # flatpak >= 1.18, so grant just the socket file)
+  - --filesystem=xdg-run/tabletd.sock
   - --socket=wayland
   - --socket=session-bus
   - --talk-name=org.gnome.Shell
